@@ -1,0 +1,80 @@
+🔴 Tier A — Newly added strong / confirmed HQ relocation cases
+
+(these have explicit or well-documented HQ moves)
+
+Tech / SaaS (core pattern: DK → US)
+Netlify → US
+Founded partly in DK (founder background + early presence)
+HQ: San Francisco
+👉 Already in your seed logic but important to keep
+SteelSeries → US
+Founded in Denmark
+HQ: Chicago
+Siteimprove → US (likely)
+Founded: Copenhagen
+Strong evidence of US leadership shift (needs final validation)
+Issuu → US
+Founded: Copenhagen
+HQ: Palo Alto
+Prezi (edge case)
+Has Danish founding involvement + US HQ
+👉 ⚠️ borderline (multi-country founding)
+Fintech / SaaS
+Cardlay → UK (likely)
+Danish fintech
+Strong UK leadership presence
+👉 ⚠️ needs validation
+OpenLedger → US (likely)
+Founded in DK
+Strong US pivot
+👉 ⚠️ verify HQ status
+Marketplaces / platforms
+Momondo → UK (likely HQ shift pre-exit)
+Founded: Copenhagen
+Strong London leadership before acquisition
+👉 ⚠️ tricky due to acquisition
+Podio → US
+Founded: Denmark
+HQ moved to US before Citrix acquisition
+
+👉 GOOD example: clear pre-acquisition HQ move
+
+Deep tech / data
+Blackwood Seven → US (likely)
+Founded: Denmark
+Strong US positioning
+👉 ⚠️ needs validation
+
+Labster → US (likely dual / shift)
+Leapwork → US presence growing
+Dixa → UK / US leadership split
+Planday → UK (pre-acquisition HQ influence)
+Templafy → US (strong shift signals)
+Trustpilot → UK plc (but ops DK) ❌ likely exclude later
+Too Good To Go → UK heavy presence ❌ likely dual HQ
+Lenus → US expansion heavy
+Veo Technologies → US presence
+ZeroNorth → Singapore / global HQ signals
+Monta → international HQ emerging
+Kompasbank → UK license + ops
+ViaBill → US expansion focus
+
+GoMore → expansion abroad (HQ unclear)
+Endomondo → US shift before acquisition (Under Armour)
+👉 strong historical case
+Falcon.io → US HQ (pre-Brandwatch acquisition)
+👉 very good case
+Podimo → possible UK/US leadership evolution
+Soundboks → US heavy ops (HQ unclear)
+Airtame → US presence strong
+**Corti → US expansion
+Mesh (crypto) → US shift likely
+Coinify → international HQ signals
+Chainalysis (already listed, keep)
+
+Pento → UK (already mentioned)
+Masterseek → US (low confidence)
+Issuu (keep, strong)
+Podio (keep, strong)
+Falcon.io (keep, strong)
+Endomondo (keep, strong)
