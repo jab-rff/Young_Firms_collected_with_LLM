@@ -6,13 +6,26 @@ import re
 from hashlib import sha1
 
 _WHITESPACE_RE = re.compile(r"\s+")
+_TRAILING_LEGAL_SUFFIX_RE = re.compile(
+    r"(?:\s|,)+(?:a/s|aps|i/s|p/s|inc\.?|ltd\.?|limited|llc|corp\.?|corporation|gmbh)$",
+    re.IGNORECASE,
+)
 
 
 def normalize_company_name(name: str) -> str:
-    """Normalize only casing, spacing, and edge punctuation."""
+    """Normalize casing, spacing, edge punctuation, and trailing legal suffixes."""
+    if "\n" in name or "\r" in name:
+        return ""
     cleaned = name.strip(" \t\r\n.,;:")
+    cleaned = cleaned.replace("’", "'").replace("`", "'")
     cleaned = _WHITESPACE_RE.sub(" ", cleaned)
-    return cleaned.lower()
+    lowered = cleaned.lower()
+    while True:
+        stripped = _TRAILING_LEGAL_SUFFIX_RE.sub("", lowered).strip(" \t\r\n.,;:")
+        if stripped == lowered:
+            break
+        lowered = stripped
+    return lowered
 
 
 def make_candidate_id(normalized_name: str) -> str:

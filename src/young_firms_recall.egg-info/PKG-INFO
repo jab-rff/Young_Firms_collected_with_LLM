@@ -4,6 +4,8 @@ Version: 0.1.0
 Summary: Minimal recall-first company discovery pipeline
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
+Requires-Dist: openai>=1.0.0
+Requires-Dist: pyarrow>=15.0.0
 
 # Recall-First Company Discovery Pipeline
 
