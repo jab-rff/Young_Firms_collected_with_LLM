@@ -11,9 +11,9 @@ Core principles:
 - No frontend
 - No scraping yet unless explicitly requested
 - External APIs should be minimized
-- OpenAI API usage is allowed for GPT-based query generation and structured extraction
-- All OpenAI calls must preserve provenance, including prompt, model, raw response, parsed output, and timestamp
-- Deterministic stages should remain runnable without OpenAI
+- OpenAI API usage is allowed for structured extraction tasks
+- All OpenAI outputs must be stored with raw responses + parsed outputs
+- The system should remain runnable without OpenAI for deterministic stages
 - Intermediate outputs should be saved to disk in transparent formats like JSONL, CSV, or parquet
 
 Research framing:
@@ -25,21 +25,6 @@ A company is a candidate if there is any plausible evidence that:
 - it may later have established its main headquarters abroad
 
 At the recall stage, uncertain candidates should usually be kept, not discarded.
-
-Target candidate-level fields:
-- firm_name
-- founding_city
-- founding_country
-- founding_year
-- moved_hq_abroad
-- move_city
-- move_country
-- move_year
-- move_context
-- move_related_to_acquisition_or_merger
-- acquisition_or_merger_context
-- sources
-- evidence_snippets
 
 Planned stages:
 1. Query generation
@@ -61,8 +46,9 @@ Important constraints:
 - No fuzzy matching yet
 - No final inclusion/exclusion logic yet
 - No LLM adjudication yet
-- A Danish founder starting a company abroad is not the same as a company being founded in Denmark
-- Foreign offices, subsidiaries, sales offices, manufacturing moves, or legal redomiciling should not automatically count as executive HQ relocation
+- No assumptions that “Danish founders” means “founded in Denmark”
+- No assumptions that foreign office means HQ relocation
+- No assumptions that legal redomiciling means executive HQ relocation
 
 Definition of success for the recall stage:
 - The system produces a candidate-level dataset

@@ -61,7 +61,11 @@ def prepare_review_row(
     if len(languages) > 1:
         confidence_signals.append("bilingual")
     
-    confidence_score = "high" if len(confidence_signals) >= 2 else ("medium" if len(mentions) >= 2 else "low")
+    confidence_score = (
+        "high"
+        if len(unique_sources) >= 2 and len(mentions) >= 2
+        else ("medium" if len(mentions) >= 2 else "low")
+    )
     
     return {
         "candidate_id": candidate.candidate_id,
