@@ -8,7 +8,10 @@ version = "0.1.0"
 description = "Minimal recall-first company discovery pipeline"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "openai>=1.0.0",
+    "pyarrow>=15.0.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

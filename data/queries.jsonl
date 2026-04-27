@@ -1,0 +1,49 @@
+{"query_id": "q_da_018", "query_text": "\"dansk virksomhed\" opk\u00f8bt \"hovedkvarter\"", "language": "da", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_019", "query_text": "\"grundlagt Danmark\" opk\u00f8bt \"flyttet\"", "language": "da", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_020", "query_text": "\"dansk startup\" \"k\u00f8bt af\" amerikansk", "language": "da", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_001", "query_text": "\"grundlagt i Danmark\" \"hovedkontor\"", "language": "da", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_002", "query_text": "\"Danmark\" \"flyttede hovedkvarter\"", "language": "da", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_003", "query_text": "\"K\u00f8benhavn\" \"flyttet hovedkvarter\"", "language": "da", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_004", "query_text": "\"dansk startup\" \"hovedkvarter\" udlandet", "language": "da", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_005", "query_text": "\"grundlagt K\u00f8benhavn\" \"nu hovedkvarter\"", "language": "da", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_021", "query_text": "\"dansk software\" virksomhed \"hovedkvarter\"", "language": "da", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_022", "query_text": "\"dansk SaaS\" virksomhed flyttet", "language": "da", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_023", "query_text": "\"dansk tech-virksomhed\" \"hovedkvarter\"", "language": "da", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_024", "query_text": "\"dansk startup\" USA teknologi", "language": "da", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_010", "query_text": "\"K\u00f8benhavn\" \"San Francisco\" virksomhed", "language": "da", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_011", "query_text": "\"K\u00f8benhavn\" \"Palo Alto\" stifter", "language": "da", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_012", "query_text": "\"K\u00f8benhavn\" \"Boston\" \"hovedkvarter\"", "language": "da", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_013", "query_text": "\"K\u00f8benhavn\" \"New York\" virksomhed", "language": "da", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_014", "query_text": "\"Danmark\" \"Chicago\" selskab", "language": "da", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_015", "query_text": "\"Danmark\" \"ledelsesm\u00e6ssigt\" hovedkvarter udlandet", "language": "da", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_016", "query_text": "dansk virksomhed \"flyttet\" hovedkvarter", "language": "da", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_017", "query_text": "\"dansk\" \"ledelses HQ\" udlandet", "language": "da", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_006", "query_text": "\"dansk startup\" \"hovedkvarter\" \"USA\"", "language": "da", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_007", "query_text": "\"dansk virksomhed\" \"San Francisco\"", "language": "da", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_008", "query_text": "\"dansk tech\" \"hovedkvarter\" \"Silicon Valley\"", "language": "da", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_da_009", "query_text": "\"dansk grundlagt\" \"amerikanske\" hovedkvarter", "language": "da", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_019", "query_text": "\"Danish company\" acquired \"headquarters\"", "language": "en", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_020", "query_text": "\"founded in Denmark\" acquired \"moved\"", "language": "en", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_021", "query_text": "\"Danish startup\" \"acquired by\" US company", "language": "en", "family": "acquisition", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_001", "query_text": "\"founded in Denmark\" \"headquarters\"", "language": "en", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_002", "query_text": "\"Denmark\" \"moved headquarters\"", "language": "en", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_003", "query_text": "\"Copenhagen\" \"relocated headquarters\"", "language": "en", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_004", "query_text": "\"Danish startup\" \"moved HQ\"", "language": "en", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_005", "query_text": "\"founded in Copenhagen\" \"now headquartered\"", "language": "en", "family": "hq_move", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_022", "query_text": "\"Danish software\" company \"headquarters\"", "language": "en", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_023", "query_text": "\"Danish SaaS\" company moved", "language": "en", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_024", "query_text": "\"Danish tech company\" relocated", "language": "en", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_025", "query_text": "\"Danish startup\" US tech", "language": "en", "family": "industry_dk", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_010", "query_text": "\"Copenhagen\" \"San Francisco\" \"founder\"", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_011", "query_text": "\"Copenhagen\" \"Palo Alto\" company", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_012", "query_text": "\"Copenhagen\" \"Boston\" \"headquarters\"", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_013", "query_text": "\"Copenhagen\" \"New York\" company moved", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_014", "query_text": "\"Copenhagen\" \"London\" \"headquarters\"", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_015", "query_text": "\"Denmark\" \"Chicago\" company HQ", "language": "en", "family": "location_pairs", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_016", "query_text": "\"Denmark\" \"relocated headquarters\" company", "language": "en", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_017", "query_text": "Danish company \"moved\" headquarters", "language": "en", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_018", "query_text": "\"Danish\" \"executive HQ\" abroad", "language": "en", "family": "relocation", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_006", "query_text": "\"Danish startup\" \"headquarters\" \"United States\"", "language": "en", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_007", "query_text": "\"Danish company\" \"moved\" \"San Francisco\"", "language": "en", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_008", "query_text": "\"Danish tech\" \"headquarters\" abroad", "language": "en", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
+{"query_id": "q_en_009", "query_text": "\"Danish founded\" \"US headquarters\"", "language": "en", "family": "startup_hq", "created_at": "2026-04-27T08:27:10.080611+00:00"}
