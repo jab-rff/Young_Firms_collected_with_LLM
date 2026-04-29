@@ -8,6 +8,8 @@ from pathlib import Path
 
 from src.normalization import normalize_company_name
 
+ORIGIN_TRACK_CHOICES = ("in_denmark", "abroad_danish_founders")
+
 
 @dataclass(frozen=True)
 class SeedFirm:
@@ -74,6 +76,24 @@ def load_seed_firms(path: Path) -> list[SeedFirm]:
     return firms
 
 
+def select_discovery_prompt_firms(path: Path, firms: list[SeedFirm], origin_track: str | None = None) -> list[SeedFirm]:
+    stem = path.stem.lower()
+    filtered = list(firms)
+    if "29_04" in stem:
+        filtered = [firm for firm in filtered if _is_borsen_method(firm.method)]
+    if origin_track is None:
+        return filtered
+    return filter_seed_firms_for_origin_track(filtered, origin_track)
+
+
+def filter_seed_firms_for_origin_track(firms: list[SeedFirm], origin_track: str) -> list[SeedFirm]:
+    if origin_track == "in_denmark":
+        return [firm for firm in firms if firm.founding_origin == "in Denmark"]
+    if origin_track == "abroad_danish_founders":
+        return [firm for firm in firms if firm.founding_origin == "abroad (Danish founders)"]
+    raise ValueError(f"Unsupported origin track: {origin_track}")
+
+
 def build_exclusion_list(firms: list[SeedFirm]) -> list[str]:
     deduped: dict[str, str] = {}
     for firm in firms:
@@ -81,6 +101,10 @@ def build_exclusion_list(firms: list[SeedFirm]) -> list[str]:
         if normalized and normalized not in deduped:
             deduped[normalized] = firm.name
     return sorted(deduped.values(), key=str.lower)
+
+
+def build_origin_track_names(firms: list[SeedFirm], origin_track: str) -> list[str]:
+    return build_exclusion_list(filter_seed_firms_for_origin_track(firms, origin_track))
 
 
 def build_core_relocation_names(firms: list[SeedFirm]) -> list[str]:
@@ -92,3 +116,15 @@ def build_core_relocation_names(firms: list[SeedFirm]) -> list[str]:
         if normalized and normalized not in deduped:
             deduped[normalized] = firm.name
     return sorted(deduped.values(), key=str.lower)
+
+
+def _is_borsen_method(value: str) -> bool:
+    text = str(value or "").strip()
+    normalized = (
+        text.replace("Ã¸", "ø")
+        .replace("Ø", "ø")
+        .replace("ö", "ø")
+        .replace("Ö", "ø")
+        .casefold()
+    )
+    return normalized == "børsen".casefold()

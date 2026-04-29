@@ -26,21 +26,19 @@ def test_dedup_removes_known_firms(tmp_path: Path) -> None:
             "firm_name": "Zendesk",
             "discovery_bucket": "sector:software",
             "source_urls": ["https://example.com/zendesk"],
-            "why_candidate": "Known already.",
-            "founding_denmark_evidence": "Founded in Copenhagen.",
-            "abroad_hq_evidence": "HQ in San Francisco.",
-            "uncertainty_note": "",
-            "ma_context": None,
+            "possible_abroad_location": "San Francisco",
+            "signal_type": "explicit_hq_move",
+            "signal_strength": "strong",
+            "short_reason": "Founded in Copenhagen and later headquartered in San Francisco.",
         },
         {
             "firm_name": "LessKnownCo",
             "discovery_bucket": "sector:software",
             "source_urls": ["https://example.com/lessknownco"],
-            "why_candidate": "Possible move.",
-            "founding_denmark_evidence": "Danish base appears in source.",
-            "abroad_hq_evidence": "Leadership later appears in London.",
-            "uncertainty_note": "Still uncertain.",
-            "ma_context": None,
+            "possible_abroad_location": "London",
+            "signal_type": "leadership_abroad",
+            "signal_strength": "weak",
+            "short_reason": "Danish base appears in one source and leadership later appears in London.",
         },
     ]
 
@@ -57,21 +55,19 @@ def test_dedup_merges_repeated_candidates() -> None:
             "firm_name": "LessKnownCo",
             "discovery_bucket": "sector:software",
             "source_urls": ["https://example.com/1"],
-            "why_candidate": "Possible move to London.",
-            "founding_denmark_evidence": "Founded in Aarhus.",
-            "abroad_hq_evidence": "Leadership later in London.",
-            "uncertainty_note": "Needs confirmation.",
-            "ma_context": None,
+            "possible_abroad_location": "London",
+            "signal_type": "leadership_abroad",
+            "signal_strength": "weak",
+            "short_reason": "Possible move to London from Aarhus.",
         },
         {
             "firm_name": "LessKnownCo ApS",
             "discovery_bucket": "destination:UK",
             "source_urls": ["https://example.com/2"],
-            "why_candidate": "Another source points to London HQ.",
-            "founding_denmark_evidence": "Danish registration mentioned.",
-            "abroad_hq_evidence": "Company page shows London office as main base.",
-            "uncertainty_note": "May be operations rather than formal HQ.",
-            "ma_context": "No obvious M&A context.",
+            "possible_abroad_location": "London",
+            "signal_type": "foreign_principal_office",
+            "signal_strength": "medium",
+            "short_reason": "Another source points to London as the main base.",
         },
     ]
 
@@ -82,5 +78,5 @@ def test_dedup_merges_repeated_candidates() -> None:
     assert record["source_urls"] == ["https://example.com/1", "https://example.com/2"]
     assert record["merged_record_count"] == 2
     assert record["discovery_buckets"] == ["sector:software", "destination:UK"]
-    assert "Possible move to London." in record["why_candidate"]
-    assert "Another source points to London HQ." in record["why_candidate"]
+    assert "Possible move to London from Aarhus." in record["short_reason"]
+    assert "Another source points to London as the main base." in record["short_reason"]

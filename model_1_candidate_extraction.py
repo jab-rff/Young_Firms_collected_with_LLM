@@ -8,8 +8,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-from src.founding_eligibility import is_post_1999_eligible_or_supported
+from src.founding_eligibility import is_post_1998_eligible_or_supported
+from src.openai_batch import build_batch_request_item, run_responses_batch
 from src.io import save_jsonl
+from src.openai_costs import build_cost_record, cost_log_path, sum_cost_records
 
 try:
     from tqdm import tqdm
@@ -29,9 +31,9 @@ Could this plausibly be a Danish-founded firm that later moved its own HQ, main 
 
 Rules:
 - allow uncertain but plausible candidates
-- exclude candidates clearly founded before 2000
-- if founding_year is known and less than 2000, do not output the candidate
-- if founding_year is unknown, allow uncertain candidates only when other evidence strongly suggests a post-1999 startup or young firm
+- exclude candidates clearly founded before 1999
+- if founding_year is known and less than 1999, do not output the candidate
+- if founding_year is unknown, allow uncertain candidates only when other evidence strongly suggests a 1999-or-later startup or young firm
 - do not fabricate years, cities, or countries
 - Danish founder abroad is not the same as founded in Denmark
 - foreign office openings alone are not enough
@@ -86,7 +88,7 @@ def build_user_prompt(candidate: dict[str, Any]) -> str:
             "keep_uncertain_plausible_candidates": True,
             "empty_candidates_if_none": True,
             "preserve_source_urls": True,
-            "founding_year_rule": "Exclude founding_year < 2000. If founding_year is unknown, keep only when evidence strongly suggests a post-1999 startup or young firm.",
+            "founding_year_rule": "Exclude founding_year < 1999. If founding_year is unknown, keep only when evidence strongly suggests a 1999-or-later startup or young firm.",
         },
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
@@ -153,7 +155,25 @@ def candidate_json_schema() -> dict[str, Any]:
     }
 
 
-def extract_candidates_from_record(record: dict[str, Any], model_name: str) -> list[dict[str, Any]]:
+def build_response_request_body(record: dict[str, Any], model_name: str) -> dict[str, Any]:
+    return {
+        "model": model_name,
+        "input": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(record)},
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "model_1_candidate_extraction",
+                "strict": True,
+                "schema": candidate_json_schema(),
+            }
+        },
+    }
+
+
+def extract_candidates_from_record(record: dict[str, Any], model_name: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     load_openai_api_key()
 
     try:
@@ -165,23 +185,18 @@ def extract_candidates_from_record(record: dict[str, Any], model_name: str) -> l
         ) from exc
 
     client = OpenAI()
-    response = client.responses.create(
-        model=model_name,
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(record)},
-        ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "model_1_candidate_extraction",
-                "strict": True,
-                "schema": candidate_json_schema(),
-            }
-        },
-    )
+    response = client.responses.create(**build_response_request_body(record, model_name))
     parsed = json.loads(response.output_text)
-    return parse_candidate_cases(record, parsed)
+    return (
+        parse_candidate_cases(record, parsed),
+        build_cost_record(
+            stage="model1",
+            request_kind="candidate_extraction",
+            raw_response=response,
+            requested_model=model_name,
+            metadata={"firm_name": str(record.get("firm_name") or "").strip()},
+        ),
+    )
 
 
 def parse_candidate_cases(record: dict[str, Any], payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -213,16 +228,18 @@ def parse_candidate_cases(record: dict[str, Any], payload: dict[str, Any]) -> li
             "source_record": record,
             "prompt_version": PROMPT_VERSION,
         }
-        if is_post_1999_eligible_or_supported(
+        if is_post_1998_eligible_or_supported(
             founding_year,
             parsed_case["founding_evidence"],
             parsed_case["reasoning"],
             parsed_case["confidence_note"],
             parsed_case["relocation_evidence"],
             parsed_case["ma_evidence"],
-            record.get("why_candidate"),
-            record.get("founding_denmark_evidence"),
-            record.get("uncertainty_note"),
+            record.get("short_reason"),
+            record.get("possible_founding_location"),
+            record.get("possible_abroad_location"),
+            record.get("signal_type"),
+            record.get("signal_strength"),
         ):
             parsed_cases.append(parsed_case)
     return parsed_cases
@@ -237,15 +254,52 @@ def run_model_1(
     output_path: Path,
     model_name: str,
     limit: int | None = None,
+    batch: bool = False,
 ) -> list[dict[str, Any]]:
     records_in = load_discovery_candidates(input_path)
     if limit is not None:
         records_in = records_in[:limit]
     records_out: list[dict[str, Any]] = []
-    for record in tqdm(records_in, total=len(records_in), desc="Model 1", unit="firm"):
-        records_out.extend(extract_candidates_from_record(record=record, model_name=model_name))
+    cost_records: list[dict[str, Any]] = []
+    if batch and records_in:
+        load_openai_api_key()
+        from openai import OpenAI
+
+        client = OpenAI()
+        request_items = [
+            build_batch_request_item(
+                custom_id=f"model1-{index}",
+                body=build_response_request_body(record, model_name),
+            )
+            for index, record in enumerate(records_in)
+        ]
+        responses_by_custom_id, batch_payload = run_responses_batch(client=client, request_items=request_items)
+        tqdm.write(f"batch_id={batch_payload.get('id')}")
+        for index, record in enumerate(records_in):
+            custom_id = f"model1-{index}"
+            response_body = responses_by_custom_id[custom_id]
+            parsed = json.loads(str(response_body.get("output_text") or ""))
+            records_out.extend(parse_candidate_cases(record, parsed))
+            cost_records.append(
+                build_cost_record(
+                    stage="model1",
+                    request_kind="candidate_extraction_batch",
+                    raw_response=response_body,
+                    requested_model=model_name,
+                    metadata={"firm_name": str(record.get("firm_name") or "").strip(), "batch": True},
+                )
+            )
+    else:
+        for record in tqdm(records_in, total=len(records_in), desc="Model 1", unit="firm"):
+            parsed_records, cost_record = extract_candidates_from_record(record=record, model_name=model_name)
+            records_out.extend(parsed_records)
+            cost_records.append(cost_record)
     save_candidate_cases(records_out, output_path)
+    save_jsonl(cost_records, cost_log_path(output_path))
+    totals = sum_cost_records(cost_records)
     tqdm.write(f"model_1_input_records={len(records_in)}")
+    tqdm.write(f"estimated_cost_usd={totals['estimated_cost_usd']:.6f}")
+    tqdm.write(f"api_cost_log_path={cost_log_path(output_path)}")
     return records_out
 
 
@@ -265,9 +319,16 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path, help="Path to write candidate-case JSONL output.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"OpenAI model to use (default: {DEFAULT_MODEL})")
     parser.add_argument("--limit", type=int, default=None, help="Optional limit for small debugging runs.")
+    parser.add_argument("--batch", action="store_true", help="Submit requests through the OpenAI Batch API.")
     args = parser.parse_args()
 
-    records = run_model_1(input_path=args.input, output_path=args.output, model_name=args.model, limit=args.limit)
+    records = run_model_1(
+        input_path=args.input,
+        output_path=args.output,
+        model_name=args.model,
+        limit=args.limit,
+        batch=args.batch,
+    )
     print(f"prompt_version={PROMPT_VERSION}")
     print(f"candidate_cases={len(records)}")
     print(f"output_path={args.output}")

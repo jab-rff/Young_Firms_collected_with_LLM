@@ -1,7 +1,8 @@
+import csv
 import json
 from pathlib import Path
 
-from model_3_validation import parse_validation_record, save_validated_records
+from model_3_validation import parse_validation_record, save_validated_records, update_master_validated_dataset
 
 
 def test_parse_validation_record_preserves_fields() -> None:
@@ -52,10 +53,10 @@ def test_save_validated_records_writes_jsonl(tmp_path: Path) -> None:
     assert json.loads(lines[0]) == records[0]
 
 
-def test_parse_validation_record_forces_false_for_founding_year_1999() -> None:
+def test_parse_validation_record_forces_false_for_founding_year_1998() -> None:
     record = {
         "firm_name": "OldCo",
-        "founding_year": 1999,
+        "founding_year": 1998,
     }
     payload = {
         "record": {
@@ -70,13 +71,13 @@ def test_parse_validation_record_forces_false_for_founding_year_1999() -> None:
     parsed = parse_validation_record(record, payload)
 
     assert parsed["validation_label"] == "false"
-    assert parsed["exclusion_reason"] == "Founded before 2000."
+    assert parsed["exclusion_reason"] == "Founded before 1999."
 
 
-def test_parse_validation_record_allows_true_for_founding_year_2000() -> None:
+def test_parse_validation_record_allows_true_for_founding_year_1999() -> None:
     record = {
         "firm_name": "NewCo",
-        "founding_year": 2000,
+        "founding_year": 1999,
     }
     payload = {
         "record": {
@@ -113,3 +114,61 @@ def test_parse_validation_record_unknown_year_stays_unclear_without_post_1999_ev
 
     assert parsed["validation_label"] == "unclear"
     assert "unknown" in parsed["validation_reason"].lower()
+
+
+def test_update_master_validated_dataset_merges_runs_and_exports_review(tmp_path: Path) -> None:
+    master_validated_path = tmp_path / "data" / "cumulative" / "master.jsonl"
+    master_review_path = tmp_path / "data" / "cumulative" / "master.csv"
+    existing = {
+        "firm_name": "Zendesk",
+        "first_legal_entity_name": "Zendesk ApS",
+        "validation_label": "true",
+        "needs_human_review": True,
+        "founded_in_denmark": "true",
+        "founding_year": 2007,
+        "founding_city": "Copenhagen",
+        "founding_country_iso": "DK",
+        "moved_hq_abroad": "true",
+        "move_year": None,
+        "moved_to_city": "San Francisco",
+        "moved_to_country_iso": "US",
+        "hq_today_city": "San Francisco",
+        "hq_today_country_iso": "US",
+        "status_today": "active",
+        "confidence": "high",
+        "validation_reason": "Strong evidence.",
+        "exclusion_reason": None,
+        "evidence_summary": "Summary.",
+        "founding_evidence": "Founded in Copenhagen.",
+        "relocation_evidence": "Later headquartered in San Francisco.",
+        "ma_evidence": "",
+        "relocation_context": "Operational shift abroad.",
+        "ma_context": "",
+        "uncertainty_note": "",
+        "sources_founding": ["https://example.com/founding"],
+        "sources_relocation": ["https://example.com/relocation"],
+        "sources_ma": [],
+        "sources_status_today": ["https://example.com/status"],
+    }
+    master_validated_path.parent.mkdir(parents=True, exist_ok=True)
+    master_validated_path.write_text(json.dumps(existing) + "\n", encoding="utf-8")
+
+    merged = update_master_validated_dataset(
+        [
+            {**existing, "firm_name": "Zendesk, Inc.", "validation_reason": "Updated."},
+            {
+                **existing,
+                "firm_name": "Sitecore",
+                "founding_year": 2001,
+                "moved_to_city": "San Francisco",
+            },
+        ],
+        master_validated_path=master_validated_path,
+        master_review_path=master_review_path,
+    )
+
+    assert len(merged) == 2
+    assert master_review_path.exists()
+    with master_review_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 2

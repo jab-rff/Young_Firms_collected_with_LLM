@@ -17,13 +17,37 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from src.seed_list import build_core_relocation_names, build_exclusion_list, load_seed_firms
-from src.founding_eligibility import is_post_1999_eligible_or_supported
+from discovery_memory import load_known_firms, save_known_firms, update_known_firms_from_rows
+from src.seed_list import (
+    build_core_relocation_names,
+    build_exclusion_list,
+    load_seed_firms,
+    select_discovery_prompt_firms,
+)
+from src.normalization import normalize_company_name
+from src.founding_eligibility import is_post_1998_eligible_or_supported
 from src.io import save_jsonl
+from src.openai_costs import build_cost_record, cost_log_path, serialize_openai_response, sum_cost_records
 
 DEFAULT_MODEL = "gpt-5-mini"
-PROMPT_VERSION = "2026-04-29-snowball-v3"
-DEFAULT_PROMPT_PATH = Path("prompts/snowball_discovery_prompt.txt")
+PROMPT_VERSION = "2026-04-29-snowball-v5"
+DEFAULT_PROMPT_PATHS = {
+    "in_denmark": Path("prompts/snowball_discovery_prompt.txt"),
+    "abroad_danish_founders": Path("prompts/snowball_discovery_abroad_danish_founders_prompt.txt"),
+}
+DEFAULT_DISCOVERY_MEMORY_PATH = Path("data/memory/discovery_known_firms.jsonl")
+
+ALLOWED_SIGNAL_TYPES = [
+    "explicit_hq_move",
+    "foreign_principal_office",
+    "foreign_parent_or_redomiciliation",
+    "acquisition_linked_continuation",
+    "foreign_office_or_operations",
+    "leadership_abroad",
+    "other_plausible_signal",
+]
+
+ALLOWED_SIGNAL_STRENGTHS = ["strong", "medium", "weak"]
 
 SECTOR_BUCKETS = [
     "biotech",
@@ -83,25 +107,40 @@ CITY_PAIR_BUCKETS = [
     "Denmark to Cambridge MA",
 ]
 
+CROSS_BUCKETS = [
+    "sector=biotech | destination=US",
+    "sector=SaaS/software | destination=US",
+    "sector=SaaS/software | destination=UK",
+    "sector=fintech | destination=UK",
+    "sector=medtech | destination=US",
+    "sector=gaming | destination=US",
+    "sector=design | destination=UK",
+    "sector=retail/consumer | destination=Germany",
+    "sector=biotech | mechanism=IPO or listing-related relocation",
+    "sector=biotech | mechanism=Delaware parent or UK parent after Danish founding",
+    "destination=US | mechanism=principal executive offices moved abroad",
+    "destination=UK | mechanism=group headquarters moved abroad",
+]
+
 SYSTEM_PROMPT = """You are a recall-first snowball discovery assistant for a company research pipeline.
 
-Your task is to find additional, lesser-known firms that may have been founded in Denmark and may later have moved their own executive headquarters, main office, executive leadership base, or main operations abroad.
+The user will provide an explicit origin track. Follow that track exactly.
+
+Possible tracks:
+- in_denmark: firms founded in Denmark
+- abroad_danish_founders: firms founded abroad by Danish founders
 
 Rules:
+- discovery is for cheap lead generation, not final validation
 - prioritize obscure or long-tail firms over famous repeated examples
 - exclude every known firm provided by the user
-- return only firms founded in 2000 or later
-- do not return firms clearly founded before 2000
-- if founding year is unknown, keep only firms whose source-backed evidence strongly suggests a young firm or startup founded after 1999
-- return only source-backed candidates
-- do not return Danish-founder-abroad cases unless the firm itself appears founded, based, or incorporated in Denmark
-- do not treat foreign office openings alone as headquarters relocation
-- do not treat acquisition-only stories as enough unless the Danish-origin firm appears to continue operating with its own HQ or main operations abroad
-- search for relocation mechanisms beyond the literal phrase "moved headquarters", including principal executive offices, global headquarters, group headquarters, parent-company restructuring, IPO or listing re-domiciliation, executive-team relocation, and operating-company continuation after M&A
-- pay attention to former names, legal entity names, rebrands, parent/subsidiary naming variants, and slash/formerly aliases
-- prefer Danish business media, foreign reporting, investor filings, archived company pages, and registry-style sources over low-signal listicles
-- keep uncertain but plausible candidates
-- do not fabricate URLs, dates, or locations
+- return only firms founded in 1999 or later
+- do not return firms clearly founded before 1999
+- if founding year is unknown, keep only firms whose source-backed evidence strongly suggests a young firm or startup founded in 1999 or later
+- return only source-backed leads
+- keep short_reason to 1-2 short sentences
+- return only 1-3 source URLs
+- do not fabricate URLs, dates, locations, founder nationality, or certainty
 - return only JSON matching the requested schema"""
 
 
@@ -148,17 +187,27 @@ def build_discovery_buckets() -> list[DiscoveryBucket]:
         buckets.append(DiscoveryBucket(bucket_type="source_style", bucket_value=value))
     for value in CITY_PAIR_BUCKETS:
         buckets.append(DiscoveryBucket(bucket_type="city_pair", bucket_value=value))
+    for value in CROSS_BUCKETS:
+        buckets.append(DiscoveryBucket(bucket_type="cross_bucket", bucket_value=value))
     return buckets
 
 
-def load_prompt_template(path: Path = DEFAULT_PROMPT_PATH) -> str:
-    if path.exists():
-        return path.read_text(encoding="utf-8").strip()
+def load_prompt_template(origin_track: str = "in_denmark", path: Path | None = None) -> str:
+    chosen_path = path or DEFAULT_PROMPT_PATHS[origin_track]
+    if chosen_path.exists():
+        return chosen_path.read_text(encoding="utf-8").strip()
+    if origin_track == "in_denmark":
+        return (
+            "Find additional Danish-founded firms that may plausibly show a later foreign HQ, principal-office, parent, "
+            "leadership, or operations signal. Exclude all known firms listed below. Prioritize obscure or less-known firms. "
+            "Return only short, source-backed leads founded in 1999 or later. Search beyond literal headquarters-move wording "
+            "and pay attention to principal executive offices, global or group HQ language, re-domiciliation, foreign parents, "
+            "leadership relocation, strategically important foreign offices, and former-name or legal-entity aliases."
+        )
     return (
-        "Find additional Danish-founded firms that may have moved their own executive headquarters, "
-        "main office, main operations, or leadership abroad. Exclude all known firms listed below. "
-        "Prioritize obscure or less-known firms. Return only source-backed candidates founded in 2000 or later. "
-        "Search beyond literal headquarters-move wording and pay attention to principal executive offices, global or group HQ language, IPO or parent-company restructurings, founder or leadership relocation narratives, and former-name or legal-entity aliases."
+        "Find additional firms founded abroad by Danish founders. Exclude all known firms listed below. Prioritize obscure "
+        "or less-known firms. Return only short, source-backed leads founded in 1999 or later. Look for clear founder links "
+        "to Denmark together with firm founding, incorporation, or early operations outside Denmark."
     )
 
 
@@ -179,14 +228,12 @@ def snowball_json_schema() -> dict[str, Any]:
                         "sector_if_known",
                         "possible_founding_location",
                         "possible_founding_year",
-                        "possible_abroad_hq_location",
+                        "possible_abroad_location",
                         "possible_move_year",
-                        "why_candidate",
-                        "founding_denmark_evidence",
-                        "abroad_hq_evidence",
-                        "ma_context",
+                        "signal_type",
+                        "signal_strength",
+                        "short_reason",
                         "source_urls",
-                        "uncertainty_note",
                     ],
                     "properties": {
                         "firm_name": {"type": "string"},
@@ -194,14 +241,17 @@ def snowball_json_schema() -> dict[str, Any]:
                         "sector_if_known": {"type": ["string", "null"]},
                         "possible_founding_location": {"type": ["string", "null"]},
                         "possible_founding_year": {"type": ["integer", "null"]},
-                        "possible_abroad_hq_location": {"type": ["string", "null"]},
+                        "possible_abroad_location": {"type": ["string", "null"]},
                         "possible_move_year": {"type": ["integer", "null"]},
-                        "why_candidate": {"type": "string"},
-                        "founding_denmark_evidence": {"type": "string"},
-                        "abroad_hq_evidence": {"type": "string"},
-                        "ma_context": {"type": ["string", "null"]},
-                        "source_urls": {"type": "array", "items": {"type": "string"}},
-                        "uncertainty_note": {"type": "string"},
+                        "signal_type": {"type": "string", "enum": ALLOWED_SIGNAL_TYPES},
+                        "signal_strength": {"type": "string", "enum": ALLOWED_SIGNAL_STRENGTHS},
+                        "short_reason": {"type": "string"},
+                        "source_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "minItems": 1,
+                            "maxItems": 3,
+                        },
                     },
                 },
             }
@@ -222,10 +272,13 @@ def build_discovery_prompt(
             "bucket_value": bucket.bucket_value,
             "discovery_bucket": bucket.bucket_id,
         },
+        "bucket_guidance": {
+            "instruction": "For cross_bucket prompts, satisfy all parts of the combined bucket together rather than treating them as separate alternatives."
+        },
         "research_target": {
             "target_case": "firms founded in Denmark that may later have moved their own HQ or main operations abroad",
             "non_target_case": "abroad (Danish founders) without the firm itself being founded or based in Denmark",
-            "founding_year_rule": "founding_year >= 2000; unknown founding year is allowed only with strong evidence of a post-1999 startup or young firm",
+            "founding_year_rule": "founding_year >= 1999; unknown founding year is allowed only with strong evidence of a 1999-or-later startup or young firm",
             "relocation_mechanisms_to_search": [
                 "principal executive offices moved abroad",
                 "global or group headquarters moved abroad",
@@ -233,6 +286,7 @@ def build_discovery_prompt(
                 "creation of a foreign parent or holding company after Danish founding",
                 "acquisition-linked relocation where the operating company still exists abroad",
                 "founder or executive relocation narrative tied to the firm's HQ",
+                "strategically important foreign office or operations base that may have become the main office",
             ],
             "name_handling": [
                 "look for former names",
@@ -246,7 +300,7 @@ def build_discovery_prompt(
             "prioritize": [
                 "obscure firms",
                 "long-tail firms",
-                "source-backed candidates",
+                "cheap, source-backed leads",
                 "cases outside the usual famous examples",
                 "Danish-language and foreign-language reporting when relevant",
                 "city-pair and destination-specific relocation narratives",
@@ -254,9 +308,9 @@ def build_discovery_prompt(
             "avoid": [
                 "any known firm in the exclusion list",
                 "pure acquisition-only cases without continued operating-company evidence abroad",
-                "foreign office openings alone",
+                "ordinary foreign office openings alone",
                 "Danish-founder-abroad cases unless the company itself was founded or based in Denmark",
-                "firms clearly founded before 2000",
+                "firms clearly founded before 1999",
             ],
             "prefer_sources": [
                 "Danish business media",
@@ -267,6 +321,14 @@ def build_discovery_prompt(
                 "registry-style sources",
             ],
             "return_only_candidates_with_real_sources": True,
+            "lead_threshold": "at least one real source for Danish origin and at least one real source for a later plausible foreign signal",
+        },
+        "signal_definitions": {
+            "allowed_signal_type_values": ALLOWED_SIGNAL_TYPES,
+            "allowed_signal_strength_values": ALLOWED_SIGNAL_STRENGTHS,
+            "strong": "explicit HQ/headquarters/principal executive office/global HQ abroad",
+            "medium": "foreign parent, re-domiciliation, IPO/listing migration, or main office abroad without fully proven physical HQ move",
+            "weak": "acquisition, foreign office, leadership abroad, or operational expansion abroad only; plausible lead but not enough for final validation",
         },
         "output_fields": [
             "firm_name",
@@ -274,14 +336,12 @@ def build_discovery_prompt(
             "sector_if_known",
             "possible_founding_location",
             "possible_founding_year",
-            "possible_abroad_hq_location",
+            "possible_abroad_location",
             "possible_move_year",
-            "why_candidate",
-            "founding_denmark_evidence",
-            "abroad_hq_evidence",
-            "ma_context",
+            "signal_type",
+            "signal_strength",
+            "short_reason",
             "source_urls",
-            "uncertainty_note",
         ],
         "known_firm_exclusions": exclusion_names,
     }
@@ -294,6 +354,7 @@ def build_followup_discovery_prompt(
     core_relocation_names: list[str],
     prompt_template: str,
     already_found_names: list[str],
+    followup_round: int,
 ) -> str:
     payload = {
         "task": (
@@ -308,26 +369,30 @@ def build_followup_discovery_prompt(
         "research_target": {
             "target_case": "firms founded in Denmark that may later have moved their own HQ or main operations abroad",
             "non_target_case": "abroad (Danish founders) without the firm itself being founded or based in Denmark",
-            "founding_year_rule": "founding_year >= 2000; unknown founding year is allowed only with strong evidence of a post-1999 startup or young firm",
-            "followup_instruction": "Return only additional firms not already found in the first pass for this bucket.",
+            "founding_year_rule": "founding_year >= 1999; unknown founding year is allowed only with strong evidence of a 1999-or-later startup or young firm",
+            "followup_instruction": f"Return only additional firms not already found in earlier passes for this bucket. This is follow-up round {followup_round}.",
             "core_known_cases_already_covered": core_relocation_names,
         },
         "requirements": {
             "prioritize": [
                 "additional obscure firms",
                 "long-tail firms not already named",
-                "source-backed candidates",
+                "cheap, source-backed leads",
                 "cases outside the usual famous examples",
             ],
             "avoid": [
                 "any known firm in the exclusion list",
                 "any firm already found in the first pass for this bucket",
                 "pure acquisition-only cases without continued operating-company evidence abroad",
-                "foreign office openings alone",
+                "ordinary foreign office openings alone",
                 "Danish-founder-abroad cases unless the company itself was founded or based in Denmark",
-                "firms clearly founded before 2000",
+                "firms clearly founded before 1999",
             ],
             "return_only_candidates_with_real_sources": True,
+        },
+        "signal_definitions": {
+            "allowed_signal_type_values": ALLOWED_SIGNAL_TYPES,
+            "allowed_signal_strength_values": ALLOWED_SIGNAL_STRENGTHS,
         },
         "output_fields": [
             "firm_name",
@@ -335,14 +400,12 @@ def build_followup_discovery_prompt(
             "sector_if_known",
             "possible_founding_location",
             "possible_founding_year",
-            "possible_abroad_hq_location",
+            "possible_abroad_location",
             "possible_move_year",
-            "why_candidate",
-            "founding_denmark_evidence",
-            "abroad_hq_evidence",
-            "ma_context",
+            "signal_type",
+            "signal_strength",
+            "short_reason",
             "source_urls",
-            "uncertainty_note",
         ],
         "known_firm_exclusions": exclusion_names,
         "already_found_firms_this_bucket": already_found_names,
@@ -382,43 +445,49 @@ def call_openai_snowball_discovery(user_prompt: str, model: str) -> tuple[dict[s
     return json.loads(response.output_text), response
 
 
-def serialize_openai_response(response: Any) -> dict[str, Any]:
-    if hasattr(response, "model_dump"):
-        return response.model_dump(mode="json")
-    if isinstance(response, dict):
-        return response
-    return {"response_repr": repr(response)}
-
-
 def parse_discovery_candidates(payload: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for candidate in payload.get("candidates") or []:
         founding_year = candidate.get("possible_founding_year")
+        signal_type = _normalize_signal_type(candidate.get("signal_type"))
+        signal_strength = _normalize_signal_strength(candidate.get("signal_strength"))
         record = {
             "firm_name": str(candidate.get("firm_name") or "").strip(),
             "discovery_bucket": str(candidate.get("discovery_bucket") or "").strip(),
             "sector_if_known": candidate.get("sector_if_known"),
             "possible_founding_location": candidate.get("possible_founding_location"),
             "possible_founding_year": founding_year,
-            "possible_abroad_hq_location": candidate.get("possible_abroad_hq_location"),
+            "possible_abroad_location": candidate.get("possible_abroad_location"),
             "possible_move_year": candidate.get("possible_move_year"),
-            "why_candidate": str(candidate.get("why_candidate") or "").strip(),
-            "founding_denmark_evidence": str(candidate.get("founding_denmark_evidence") or "").strip(),
-            "abroad_hq_evidence": str(candidate.get("abroad_hq_evidence") or "").strip(),
-            "ma_context": candidate.get("ma_context"),
-            "source_urls": [str(url).strip() for url in candidate.get("source_urls") or [] if str(url).strip()],
-            "uncertainty_note": str(candidate.get("uncertainty_note") or "").strip(),
+            "signal_type": signal_type,
+            "signal_strength": signal_strength,
+            "short_reason": str(candidate.get("short_reason") or "").strip(),
+            "source_urls": [str(url).strip() for url in candidate.get("source_urls") or [] if str(url).strip()][:3],
         }
-        if is_post_1999_eligible_or_supported(
+        if is_post_1998_eligible_or_supported(
             founding_year,
-            record["why_candidate"],
-            record["founding_denmark_evidence"],
-            record["abroad_hq_evidence"],
-            record["uncertainty_note"],
-            record["ma_context"],
+            record["short_reason"],
+            record["possible_founding_location"],
+            record["possible_abroad_location"],
+            record["signal_type"],
+            record["signal_strength"],
         ):
             records.append(record)
     return records
+
+
+def _normalize_signal_type(value: Any) -> str:
+    text = str(value or "").strip()
+    if text in ALLOWED_SIGNAL_TYPES:
+        return text
+    return "other_plausible_signal"
+
+
+def _normalize_signal_strength(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in ALLOWED_SIGNAL_STRENGTHS:
+        return text
+    return "weak"
 
 
 def build_bucket_run_record(
@@ -477,30 +546,44 @@ def run_snowball_discovery(
     round_number: int,
     model: str,
     max_buckets: int | None = None,
-    prompt_path: Path = DEFAULT_PROMPT_PATH,
-    followup_pass: bool = True,
+    prompt_path: Path | None = None,
+    followup_rounds: int = 3,
+    memory_path: Path = DEFAULT_DISCOVERY_MEMORY_PATH,
 ) -> list[dict[str, Any]]:
     known_firms = load_seed_firms(known_path)
-    exclusion_names = build_exclusion_list(known_firms)
-    core_relocation_names = build_core_relocation_names(known_firms)
-    prompt_template = load_prompt_template(prompt_path)
+    prompt_seed_firms = select_discovery_prompt_firms(known_path, known_firms)
+    seed_exclusion_names = build_exclusion_list(prompt_seed_firms)
+    core_relocation_names = build_core_relocation_names(prompt_seed_firms)
+    prompt_template = load_prompt_template(path=prompt_path)
     buckets = build_discovery_buckets()
     if max_buckets is not None:
         buckets = buckets[:max_buckets]
 
     all_candidate_records: list[dict[str, Any]] = []
     bucket_run_records: list[dict[str, Any]] = []
+    cost_records: list[dict[str, Any]] = []
+    memory_known_normalized = load_known_firms(memory_path)
+    rolling_exclusion_names = list(seed_exclusion_names)
+    seen_prompt_names = {normalize_company_name(name) for name in rolling_exclusion_names if normalize_company_name(name)}
+    for record in update_known_firms_from_rows([], memory_path=memory_path):
+        normalized = str(record.get("normalized_name") or "").strip()
+        display_name = str(record.get("firm_name") or "").strip()
+        if normalized and normalized in memory_known_normalized and display_name and normalized not in seen_prompt_names:
+            rolling_exclusion_names.append(display_name)
+            seen_prompt_names.add(normalized)
 
     for position, bucket in enumerate(buckets, start=1):
         print(f"[{position}/{len(buckets)}] bucket={bucket.bucket_id}")
         prompt_text = build_discovery_prompt(
             bucket=bucket,
-            exclusion_names=exclusion_names,
+            exclusion_names=rolling_exclusion_names,
             core_relocation_names=core_relocation_names,
             prompt_template=prompt_template,
         )
+        print(f"  - pass=initial query={bucket.bucket_type}:{bucket.bucket_value}")
         parsed_payload, raw_response = call_openai_snowball_discovery(user_prompt=prompt_text, model=model)
         parsed_candidates = parse_discovery_candidates(parsed_payload)
+        print(f"  - pass=initial leads={len(parsed_candidates)} bucket={bucket.bucket_id}")
         bucket_run_records.append(
             build_bucket_run_record(
                 bucket=bucket,
@@ -510,6 +593,20 @@ def run_snowball_discovery(
                 raw_response=raw_response,
                 parsed_payload=parsed_payload,
                 pass_type="initial",
+            )
+        )
+        cost_records.append(
+            build_cost_record(
+                stage="discovery",
+                request_kind="initial",
+                raw_response=raw_response,
+                requested_model=model,
+                metadata={
+                    "round": round_number,
+                    "bucket_type": bucket.bucket_type,
+                    "bucket_value": bucket.bucket_value,
+                    "discovery_bucket": bucket.bucket_id,
+                },
             )
         )
         all_candidate_records.extend(
@@ -523,22 +620,27 @@ def run_snowball_discovery(
             )
         )
 
-        if followup_pass and parsed_candidates:
-            already_found_names = list(
-                dict.fromkeys(candidate["firm_name"] for candidate in parsed_candidates if candidate["firm_name"])
-            )
+        already_found_names = list(
+            dict.fromkeys(candidate["firm_name"] for candidate in parsed_candidates if candidate["firm_name"])
+        )
+        for followup_round in range(1, followup_rounds + 1):
+            if not already_found_names:
+                break
             followup_prompt_text = build_followup_discovery_prompt(
                 bucket=bucket,
-                exclusion_names=exclusion_names,
+                exclusion_names=rolling_exclusion_names,
                 core_relocation_names=core_relocation_names,
                 prompt_template=prompt_template,
                 already_found_names=already_found_names,
+                followup_round=followup_round,
             )
+            print(f"  - pass=followup_{followup_round} query={bucket.bucket_type}:{bucket.bucket_value}")
             followup_payload, followup_response = call_openai_snowball_discovery(
                 user_prompt=followup_prompt_text,
                 model=model,
             )
             followup_candidates = parse_discovery_candidates(followup_payload)
+            print(f"  - pass=followup_{followup_round} leads={len(followup_candidates)} bucket={bucket.bucket_id}")
             bucket_run_records.append(
                 build_bucket_run_record(
                     bucket=bucket,
@@ -547,7 +649,21 @@ def run_snowball_discovery(
                     prompt_text=followup_prompt_text,
                     raw_response=followup_response,
                     parsed_payload=followup_payload,
-                    pass_type="followup",
+                    pass_type=f"followup_{followup_round}",
+                )
+            )
+            cost_records.append(
+                build_cost_record(
+                    stage="discovery",
+                    request_kind=f"followup_{followup_round}",
+                    raw_response=followup_response,
+                    requested_model=model,
+                    metadata={
+                        "round": round_number,
+                        "bucket_type": bucket.bucket_type,
+                        "bucket_value": bucket.bucket_value,
+                        "discovery_bucket": bucket.bucket_id,
+                    },
                 )
             )
             all_candidate_records.extend(
@@ -560,10 +676,36 @@ def run_snowball_discovery(
                     raw_response=followup_response,
                 )
             )
+            new_names = [candidate["firm_name"] for candidate in followup_candidates if candidate["firm_name"]]
+            for name in new_names:
+                if name not in already_found_names:
+                    already_found_names.append(name)
+            if not new_names:
+                break
+
+        for candidate in parsed_candidates:
+            normalized = normalize_company_name(candidate.get("firm_name"))
+            display_name = str(candidate.get("firm_name") or "").strip()
+            if normalized and display_name and normalized not in seen_prompt_names:
+                rolling_exclusion_names.append(display_name)
+                seen_prompt_names.add(normalized)
+        for candidate in all_candidate_records:
+            normalized = normalize_company_name(candidate.get("firm_name"))
+            display_name = str(candidate.get("firm_name") or "").strip()
+            if normalized and display_name and normalized not in seen_prompt_names:
+                rolling_exclusion_names.append(display_name)
+                seen_prompt_names.add(normalized)
 
     save_jsonl(all_candidate_records, output_path)
     bucket_runs_path = output_path.with_name(f"{output_path.stem}_bucket_runs{output_path.suffix}")
     save_jsonl(bucket_run_records, bucket_runs_path)
+    save_jsonl(cost_records, cost_log_path(output_path))
+    updated_memory = update_known_firms_from_rows(all_candidate_records, memory_path=memory_path)
+    save_known_firms(updated_memory, memory_path)
+    totals = sum_cost_records(cost_records)
+    print(f"estimated_cost_usd={totals['estimated_cost_usd']:.6f}")
+    print(f"api_cost_log_path={cost_log_path(output_path)}")
+    print(f"discovery_memory_path={memory_path}")
     return all_candidate_records
 
 
@@ -582,14 +724,27 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prompt-path",
         type=Path,
-        default=DEFAULT_PROMPT_PATH,
+        default=None,
         help="Optional custom prompt template path.",
     )
     parser.add_argument(
+        "--memory-path",
+        type=Path,
+        default=DEFAULT_DISCOVERY_MEMORY_PATH,
+        help="Persistent cross-run discovery memory path used for prompt exclusions and cumulative tracking.",
+    )
+    parser.add_argument(
+        "--followup-rounds",
+        type=int,
+        default=3,
+        help="Number of bounded follow-up 'find more' rounds to run per bucket after the initial pass.",
+    )
+    parser.add_argument(
         "--no-followup-pass",
-        action="store_false",
-        dest="followup_pass",
-        help="Disable the bounded second-pass 'find more' discovery prompt for each bucket.",
+        action="store_const",
+        const=0,
+        dest="followup_rounds",
+        help="Disable follow-up discovery passes. Deprecated alias for --followup-rounds 0.",
     )
     return parser
 
@@ -604,7 +759,8 @@ def main() -> None:
         model=args.model,
         max_buckets=args.max_buckets,
         prompt_path=args.prompt_path,
-        followup_pass=args.followup_pass,
+        followup_rounds=max(0, args.followup_rounds),
+        memory_path=args.memory_path,
     )
 
 

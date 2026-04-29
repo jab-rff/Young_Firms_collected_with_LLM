@@ -7,6 +7,7 @@ from discovery_memory import (
     create_followup_queries,
     load_known_firms,
     save_known_firms,
+    update_known_firms_from_rows,
     update_known_firms_from_model1,
 )
 from retrieve_with_openai import load_queries
@@ -144,3 +145,20 @@ def test_build_exclusion_prompt_caps_list_length() -> None:
     assert prompt.startswith("Do not return these already-known firms:")
     assert "Firm 99" in prompt
     assert "Firm 100" not in prompt
+
+
+def test_update_known_firms_from_rows_uses_source_urls(tmp_path: Path) -> None:
+    memory_path = tmp_path / "known_firms.jsonl"
+    records = update_known_firms_from_rows(
+        [
+            {"firm_name": "LessKnownCo", "source_urls": ["https://example.com/1"]},
+            {"firm_name": "LessKnownCo ApS", "source_urls": ["https://example.com/2"]},
+        ],
+        memory_path=memory_path,
+        seen_at="2026-04-29T12:00:00Z",
+    )
+
+    assert len(records) == 1
+    assert records[0]["normalized_name"] == "lessknownco"
+    assert records[0]["times_seen"] == 2
+    assert records[0]["source_urls"] == ["https://example.com/1", "https://example.com/2"]

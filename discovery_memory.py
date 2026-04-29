@@ -56,20 +56,36 @@ def update_known_firms_from_model1(
     memory_path: Path | None = None,
     seen_at: str | None = None,
 ) -> list[dict[str, Any]]:
+    return update_known_firms_from_rows(
+        _load_jsonl_rows(model1_path),
+        memory_path=memory_path,
+        seen_at=seen_at,
+        source_field="sources",
+        query_ids_field="query_ids",
+    )
+
+
+def update_known_firms_from_rows(
+    rows: list[dict[str, Any]],
+    memory_path: Path | None = None,
+    seen_at: str | None = None,
+    source_field: str = "source_urls",
+    query_ids_field: str | None = None,
+) -> list[dict[str, Any]]:
     records_by_name: dict[str, dict[str, Any]] = {}
     if memory_path is not None and memory_path.exists():
         for record in _load_memory_records(memory_path):
             records_by_name[record["normalized_name"]] = record
 
     timestamp = seen_at or datetime.now(timezone.utc).isoformat()
-    for candidate in _load_jsonl_rows(model1_path):
+    for candidate in rows:
         firm_name = str(candidate.get("firm_name") or "").strip()
         normalized_name = normalize_company_name(firm_name)
         if not normalized_name:
             continue
         display_name = strip_trailing_legal_suffixes(firm_name) or firm_name
-        sources = _string_list(candidate.get("sources"))
-        query_ids = _string_list(candidate.get("query_ids"))
+        sources = _string_list(candidate.get(source_field))
+        query_ids = _string_list(candidate.get(query_ids_field)) if query_ids_field else []
         existing = records_by_name.get(normalized_name)
         if existing is None:
             records_by_name[normalized_name] = {
@@ -91,6 +107,20 @@ def update_known_firms_from_model1(
         existing["query_ids"] = _merge_unique(existing.get("query_ids"), query_ids)
 
     return sorted(records_by_name.values(), key=lambda record: record["normalized_name"])
+
+
+def update_known_firms_from_discovery(
+    discovery_path: Path,
+    memory_path: Path | None = None,
+    seen_at: str | None = None,
+) -> list[dict[str, Any]]:
+    return update_known_firms_from_rows(
+        _load_jsonl_rows(discovery_path),
+        memory_path=memory_path,
+        seen_at=seen_at,
+        source_field="source_urls",
+        query_ids_field=None,
+    )
 
 
 def build_exclusion_prompt(records_or_names: list[dict[str, Any]] | set[str] | list[str], limit: int = _MAX_EXCLUSION_FIRMS) -> str:

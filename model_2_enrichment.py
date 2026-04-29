@@ -10,6 +10,8 @@ from typing import Any
 
 from src.io import save_jsonl
 from src.normalization import normalize_company_name
+from src.openai_batch import build_batch_request_item, run_responses_batch
+from src.openai_costs import build_cost_record, cost_log_path, sum_cost_records
 
 try:
     from tqdm import tqdm
@@ -175,7 +177,27 @@ def enrichment_json_schema() -> dict[str, Any]:
     }
 
 
-def enrich_candidate(candidate: dict[str, Any], model_name: str) -> dict[str, Any]:
+def build_response_request_body(candidate: dict[str, Any], model_name: str) -> dict[str, Any]:
+    return {
+        "model": model_name,
+        "input": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(candidate)},
+        ],
+        "tools": [{"type": "web_search"}],
+        "include": ["web_search_call.action.sources"],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "model_2_enrichment",
+                "strict": True,
+                "schema": enrichment_json_schema(),
+            }
+        },
+    }
+
+
+def enrich_candidate(candidate: dict[str, Any], model_name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     load_openai_api_key()
 
     try:
@@ -187,25 +209,18 @@ def enrich_candidate(candidate: dict[str, Any], model_name: str) -> dict[str, An
         ) from exc
 
     client = OpenAI()
-    response = client.responses.create(
-        model=model_name,
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(candidate)},
-        ],
-        tools=[{"type": "web_search"}],
-        include=["web_search_call.action.sources"],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "model_2_enrichment",
-                "strict": True,
-                "schema": enrichment_json_schema(),
-            }
-        },
-    )
+    response = client.responses.create(**build_response_request_body(candidate, model_name))
     parsed = json.loads(response.output_text)
-    return parse_enriched_record(candidate, parsed)
+    return (
+        parse_enriched_record(candidate, parsed),
+        build_cost_record(
+            stage="model2",
+            request_kind="enrichment",
+            raw_response=response,
+            requested_model=model_name,
+            metadata={"firm_name": str(candidate.get("firm_name") or "").strip()},
+        ),
+    )
 
 
 def parse_enriched_record(candidate: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -253,15 +268,51 @@ def run_model_2(
     output_path: Path,
     model_name: str,
     limit: int | None = None,
+    batch: bool = False,
 ) -> list[dict[str, Any]]:
     candidates = reconcile_model_1_duplicates(load_model_1_candidates(input_path))
     if limit is not None:
         candidates = candidates[:limit]
     records: list[dict[str, Any]] = []
-    for candidate in tqdm(candidates, total=len(candidates), desc="Model 2", unit="firm"):
-        records.append(enrich_candidate(candidate=candidate, model_name=model_name))
+    cost_records: list[dict[str, Any]] = []
+    if batch and candidates:
+        load_openai_api_key()
+        from openai import OpenAI
+
+        client = OpenAI()
+        request_items = [
+            build_batch_request_item(
+                custom_id=f"model2-{index}",
+                body=build_response_request_body(candidate, model_name),
+            )
+            for index, candidate in enumerate(candidates)
+        ]
+        responses_by_custom_id, batch_payload = run_responses_batch(client=client, request_items=request_items)
+        tqdm.write(f"batch_id={batch_payload.get('id')}")
+        for index, candidate in enumerate(candidates):
+            response_body = responses_by_custom_id[f"model2-{index}"]
+            parsed = json.loads(str(response_body.get("output_text") or ""))
+            records.append(parse_enriched_record(candidate, parsed))
+            cost_records.append(
+                build_cost_record(
+                    stage="model2",
+                    request_kind="enrichment_batch",
+                    raw_response=response_body,
+                    requested_model=model_name,
+                    metadata={"firm_name": str(candidate.get("firm_name") or "").strip(), "batch": True},
+                )
+            )
+    else:
+        for candidate in tqdm(candidates, total=len(candidates), desc="Model 2", unit="firm"):
+            record, cost_record = enrich_candidate(candidate=candidate, model_name=model_name)
+            records.append(record)
+            cost_records.append(cost_record)
     save_enriched_records(records, output_path)
+    save_jsonl(cost_records, cost_log_path(output_path))
+    totals = sum_cost_records(cost_records)
     tqdm.write(f"model_2_input_records={len(candidates)}")
+    tqdm.write(f"estimated_cost_usd={totals['estimated_cost_usd']:.6f}")
+    tqdm.write(f"api_cost_log_path={cost_log_path(output_path)}")
     return records
 
 
@@ -343,9 +394,16 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path, help="Path to write enriched candidate JSONL output.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"OpenAI model to use (default: {DEFAULT_MODEL})")
     parser.add_argument("--limit", type=int, default=None, help="Optional limit for small debugging runs.")
+    parser.add_argument("--batch", action="store_true", help="Submit requests through the OpenAI Batch API.")
     args = parser.parse_args()
 
-    records = run_model_2(input_path=args.input, output_path=args.output, model_name=args.model, limit=args.limit)
+    records = run_model_2(
+        input_path=args.input,
+        output_path=args.output,
+        model_name=args.model,
+        limit=args.limit,
+        batch=args.batch,
+    )
     print(f"prompt_version={PROMPT_VERSION}")
     print(f"enriched_records={len(records)}")
     print(f"output_path={args.output}")

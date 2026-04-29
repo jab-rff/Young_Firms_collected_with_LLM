@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from src.pipeline_rounds import (
     ensure_parent_dir,
     save_json,
 )
+from src.openai_costs import cost_log_path, sum_cost_records
 
 DEFAULT_MODEL = "gpt-5-mini"
 TOTAL_STAGES = 6
@@ -40,7 +42,8 @@ def build_stage_specs(
     model_name: str,
     max_buckets: int | None = None,
     limit: int | None = None,
-    followup_discovery: bool = True,
+    followup_discovery_rounds: int = 3,
+    batch_llm_stages: bool = False,
 ) -> list[StageSpec]:
     paths = build_round_paths(round_number)
     return [
@@ -56,7 +59,7 @@ def build_stage_specs(
                 paths,
                 model_name,
                 max_buckets,
-                followup_discovery,
+                followup_discovery_rounds,
             ),
         ),
         StageSpec(
@@ -88,6 +91,7 @@ def build_stage_specs(
                 output_path=paths.model1,
                 model_name=model_name,
                 limit=limit,
+                batch=batch_llm_stages,
             ),
         ),
         StageSpec(
@@ -102,6 +106,7 @@ def build_stage_specs(
                 output_path=paths.model2,
                 model_name=model_name,
                 limit=limit,
+                batch=batch_llm_stages,
             ),
         ),
         StageSpec(
@@ -116,6 +121,7 @@ def build_stage_specs(
                 output_path=paths.model3,
                 model_name=model_name,
                 limit=limit,
+                batch=batch_llm_stages,
             ),
         ),
         StageSpec(
@@ -145,7 +151,8 @@ def run_pipeline(
     stop_after: str | None = None,
     dry_run: bool = False,
     limit: int | None = None,
-    followup_discovery: bool = True,
+    followup_discovery_rounds: int = 3,
+    batch_llm_stages: bool = False,
 ) -> dict[str, Any]:
     paths = build_round_paths(round_number)
     stages = build_stage_specs(
@@ -154,7 +161,8 @@ def run_pipeline(
         model_name=model_name,
         max_buckets=max_buckets,
         limit=limit,
-        followup_discovery=followup_discovery,
+        followup_discovery_rounds=followup_discovery_rounds,
+        batch_llm_stages=batch_llm_stages,
     )
     manifest = _build_manifest(
         round_number=round_number,
@@ -165,7 +173,8 @@ def run_pipeline(
         stop_after=stop_after,
         max_buckets=max_buckets,
         limit=limit,
-        followup_discovery=followup_discovery,
+        followup_discovery_rounds=followup_discovery_rounds,
+        batch_llm_stages=batch_llm_stages,
         manifest_path=paths.manifest,
     )
 
@@ -182,6 +191,8 @@ def run_pipeline(
             manifest["output_paths"][stage.slug] = str(stage.output_path)
             if stage_result["row_count"] is not None:
                 manifest["row_counts"][stage.slug] = stage_result["row_count"]
+            if stage_result.get("estimated_cost_usd") is not None:
+                manifest["costs_usd"][stage.slug] = stage_result["estimated_cost_usd"]
             if stage_result["status"] == "skipped":
                 manifest["skipped_stages"].append(stage.slug)
             if stage.slug == stop_after:
@@ -195,6 +206,7 @@ def run_pipeline(
 
     manifest["success"] = True
     manifest["failure"] = None
+    manifest["estimated_cost_usd_total"] = round(sum(float(value) for value in manifest["costs_usd"].values()), 8)
     manifest["finished_at"] = _timestamp_now()
     save_json(manifest, paths.manifest)
     return manifest
@@ -210,10 +222,22 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="Print commands, inputs, and outputs without executing.")
     parser.add_argument("--limit", type=int, default=None, help="Optional small-run limit for supported stages.")
     parser.add_argument(
+        "--batch-llm-stages",
+        action="store_true",
+        help="Submit Model 1, Model 2, and Model 3 requests through the OpenAI Batch API.",
+    )
+    parser.add_argument(
+        "--followup-discovery-rounds",
+        type=int,
+        default=3,
+        help="Number of follow-up discovery rounds to run per bucket after the initial pass.",
+    )
+    parser.add_argument(
         "--no-followup-discovery",
-        action="store_false",
-        dest="followup_discovery",
-        help="Disable the bounded second-pass 'find more' prompt in snowball discovery.",
+        action="store_const",
+        const=0,
+        dest="followup_discovery_rounds",
+        help="Disable follow-up discovery passes. Deprecated alias for --followup-discovery-rounds 0.",
     )
     parser.add_argument(
         "--stop-after",
@@ -243,7 +267,16 @@ def _run_stage(stage: StageSpec, dry_run: bool, skip_existing: bool) -> dict[str
     row_count = _validate_stage_output(stage)
     print(f"output_path={stage.output_path}")
     print(f"row_count={row_count}")
-    return _build_stage_result(stage=stage, status="completed", row_count=row_count)
+    stage_result = _build_stage_result(stage=stage, status="completed", row_count=row_count)
+    stage_cost_log_path = cost_log_path(stage.output_path)
+    if stage_cost_log_path.exists():
+        cost_records = _load_jsonl(stage_cost_log_path)
+        cost_totals = sum_cost_records(cost_records)
+        stage_result["estimated_cost_usd"] = cost_totals["estimated_cost_usd"]
+        stage_result["api_cost_log_path"] = str(stage_cost_log_path)
+        print(f"estimated_cost_usd={cost_totals['estimated_cost_usd']:.6f}")
+        print(f"api_cost_log_path={stage_cost_log_path}")
+    return stage_result
 
 
 def _build_stage_result(stage: StageSpec, status: str, row_count: int | None) -> dict[str, Any]:
@@ -267,7 +300,8 @@ def _build_manifest(
     stop_after: str | None,
     max_buckets: int | None,
     limit: int | None,
-    followup_discovery: bool,
+    followup_discovery_rounds: int,
+    batch_llm_stages: bool,
     manifest_path: Path,
 ) -> dict[str, Any]:
     return {
@@ -280,15 +314,18 @@ def _build_manifest(
         "stop_after": stop_after,
         "max_buckets": max_buckets,
         "limit": limit,
-        "followup_discovery": followup_discovery,
+        "followup_discovery_rounds": followup_discovery_rounds,
+        "batch_llm_stages": batch_llm_stages,
         "commands_run": [],
         "output_paths": {},
         "row_counts": {},
+        "costs_usd": {},
         "skipped_stages": [],
         "stages": [],
         "success": False,
         "failure": None,
         "manifest_path": str(manifest_path),
+        "estimated_cost_usd_total": 0.0,
         "finished_at": None,
     }
 
@@ -299,7 +336,7 @@ def _build_discovery_command(
     paths: RoundPaths,
     model_name: str,
     max_buckets: int | None,
-    followup_discovery: bool,
+    followup_discovery_rounds: int,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -315,8 +352,7 @@ def _build_discovery_command(
     ]
     if max_buckets is not None:
         command.extend(["--max-buckets", str(max_buckets)])
-    if not followup_discovery:
-        command.append("--no-followup-pass")
+    command.extend(["--followup-rounds", str(max(0, followup_discovery_rounds))])
     return command
 
 
@@ -326,6 +362,7 @@ def _build_model_command(
     output_path: Path,
     model_name: str,
     limit: int | None,
+    batch: bool,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -339,6 +376,8 @@ def _build_model_command(
     ]
     if limit is not None:
         command.extend(["--limit", str(limit)])
+    if batch:
+        command.append("--batch")
     return command
 
 
@@ -377,6 +416,17 @@ def _timestamp_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _load_jsonl(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+    return records
+
+
 def main() -> None:
     parser = build_argument_parser()
     args = parser.parse_args()
@@ -390,7 +440,8 @@ def main() -> None:
             stop_after=args.stop_after,
             dry_run=args.dry_run,
             limit=args.limit,
-            followup_discovery=args.followup_discovery,
+            followup_discovery_rounds=max(0, args.followup_discovery_rounds),
+            batch_llm_stages=args.batch_llm_stages,
         )
         if not args.dry_run:
             print(f"manifest_path={manifest['manifest_path']}")

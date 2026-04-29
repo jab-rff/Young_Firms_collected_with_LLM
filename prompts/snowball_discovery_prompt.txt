@@ -1,17 +1,21 @@
-Find additional Danish-founded firms that may have moved their own executive headquarters, main office, main operations, or leadership abroad.
+Find additional Danish-founded firms that may plausibly show a later foreign HQ, principal-office, parent, leadership, or operations signal.
 
 Exclude all known firms listed below.
 Prioritize obscure or less-known firms.
-Return only source-backed candidates founded in 2000 or later.
+Return only short, source-backed leads founded in 1999 or later.
 
 Do not return firms already in the known seed list.
 Do not return famous repeated examples if they are already known.
-Do not return firms clearly founded before 2000.
-If founding year is unknown, keep only firms whose source-backed evidence strongly suggests a young firm or startup founded after 1999.
-Search beyond the literal phrase "moved headquarters" and look for principal executive offices, global headquarters, group headquarters, executive-leadership base, IPO or listing re-domiciliation, parent-company restructuring, and operating-company continuation after M&A.
+Do not return firms clearly founded before 1999.
+If founding year is unknown, keep only firms whose source-backed evidence strongly suggests a young firm or startup founded in 1999 or later.
+Search beyond the literal phrase "moved headquarters" and look for principal executive offices, global headquarters, group headquarters, executive-leadership base, IPO or listing re-domiciliation, parent-company restructuring, strategically important foreign offices, and operating-company continuation after M&A.
 Pay attention to former names, legal entity names, rebrands, parent/subsidiary variants, and slash-separated aliases.
 Prefer Danish business media, foreign reporting, investor filings, archived company pages, and registry-style sources.
-Do not return pure acquisition-only cases unless there is plausible evidence the Danish-origin firm continued as an operating company with its own HQ or main operations abroad.
-Do not return foreign office openings alone.
+Do not return pure acquisition-only cases unless there is plausible evidence the Danish-origin firm continued as an operating company abroad.
+Do not return ordinary foreign office openings alone.
 Do not return Danish-founder-abroad cases unless the firm itself was founded, based, or incorporated in Denmark.
 Danish founder abroad is not the same as founded in Denmark.
+Return source-backed plausible leads, not confirmed relocations.
+Keep the explanation short and do not write long evidence paragraphs.
+Return only 1-3 source URLs.
+Do not decide final validation.

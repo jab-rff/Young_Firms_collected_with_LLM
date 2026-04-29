@@ -5,14 +5,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-MIN_ELIGIBLE_FOUNDING_YEAR = 2000
+MIN_ELIGIBLE_FOUNDING_YEAR = 1999
 
-POST_1999_YEAR_PATTERN = re.compile(
-    r"\b(?:founded|founded in|launched|started|established|incorporated|formed)\b[^.:\n]{0,40}\b(20\d{2})\b",
+POST_1998_YEAR_PATTERN = re.compile(
+    r"\b(?:founded|founded in|launched|started|established|incorporated|formed)\b[^.:\n]{0,40}\b(?:1999|20\d{2})\b",
     re.IGNORECASE,
 )
 
-POST_1999_HINT_PATTERNS = [
+POST_1998_HINT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         r"\bstartup\b",
@@ -23,7 +23,7 @@ POST_1999_HINT_PATTERNS = [
         r"\bearly-stage\b",
         r"\bseed-stage\b",
         r"\bventure-backed\b",
-        r"\bfounded in the 20\d0s\b",
+        r"\bfounded in (?:1999|the 20\d0s)\b",
     )
 ]
 
@@ -45,19 +45,19 @@ def is_eligible_founding_year(value: Any) -> bool:
     return year is not None and year >= MIN_ELIGIBLE_FOUNDING_YEAR
 
 
-def has_strong_post_1999_evidence(*texts: Any) -> bool:
+def has_strong_post_1998_evidence(*texts: Any) -> bool:
     combined = "\n".join(str(text or "") for text in texts if text)
     if not combined:
         return False
 
-    if POST_1999_YEAR_PATTERN.search(combined):
+    if POST_1998_YEAR_PATTERN.search(combined):
         return True
 
-    return any(pattern.search(combined) for pattern in POST_1999_HINT_PATTERNS)
+    return any(pattern.search(combined) for pattern in POST_1998_HINT_PATTERNS)
 
 
-def is_post_1999_eligible_or_supported(found_year: Any, *texts: Any) -> bool:
+def is_post_1998_eligible_or_supported(found_year: Any, *texts: Any) -> bool:
     year = normalize_year(found_year)
     if year is not None:
         return year >= MIN_ELIGIBLE_FOUNDING_YEAR
-    return has_strong_post_1999_evidence(*texts)
+    return has_strong_post_1998_evidence(*texts)

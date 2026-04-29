@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from run_pipeline import StageSpec, build_stage_specs, run_pipeline
+from src.openai_costs import cost_log_path
 
 
 def test_build_stage_specs_includes_expected_paths_and_max_buckets() -> None:
@@ -19,20 +20,37 @@ def test_build_stage_specs_includes_expected_paths_and_max_buckets() -> None:
     assert len(stages) == 6
     assert stages[0].output_path == Path("data/discovery/snowball_round_001.jsonl")
     assert "--max-buckets" in stages[0].command
-    assert "--no-followup-pass" not in stages[0].command
+    assert "--followup-rounds" in stages[0].command
+    assert "3" in stages[0].command
     assert "--limit" in stages[2].command
+    assert "--batch" not in stages[2].command
     assert stages[-1].output_path == Path("data/review/snowball_round_001_review.csv")
 
 
-def test_build_stage_specs_can_disable_followup_discovery() -> None:
+def test_build_stage_specs_can_set_followup_discovery_rounds() -> None:
     stages = build_stage_specs(
         round_number=1,
         known_path=Path("preliminary_data_28_04.csv"),
         model_name="gpt-5-mini",
-        followup_discovery=False,
+        followup_discovery_rounds=0,
     )
 
-    assert "--no-followup-pass" in stages[0].command
+    assert "--followup-rounds" in stages[0].command
+    assert "0" in stages[0].command
+
+
+def test_build_stage_specs_can_enable_batch_llm_stages() -> None:
+    stages = build_stage_specs(
+        round_number=1,
+        known_path=Path("preliminary_data_28_04.csv"),
+        model_name="gpt-5-mini",
+        batch_llm_stages=True,
+    )
+
+    assert "--batch" in stages[2].command
+    assert "--batch" in stages[3].command
+    assert "--batch" in stages[4].command
+    assert "--batch" not in stages[0].command
 
 
 def test_run_pipeline_skips_existing_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,7 +67,8 @@ def test_run_pipeline_skips_existing_outputs(tmp_path: Path, monkeypatch: pytest
         model_name: str,
         max_buckets=None,
         limit=None,
-        followup_discovery=True,
+        followup_discovery_rounds=3,
+        batch_llm_stages=False,
     ):
         return [
             StageSpec(
@@ -92,7 +111,8 @@ def test_run_pipeline_dry_run_creates_manifest_without_execution(tmp_path: Path,
         model_name: str,
         max_buckets=None,
         limit=None,
-        followup_discovery=True,
+        followup_discovery_rounds=3,
+        batch_llm_stages=False,
     ):
         return [
             StageSpec(
@@ -147,7 +167,8 @@ def test_run_pipeline_raises_clear_error_for_missing_input(tmp_path: Path, monke
         model_name: str,
         max_buckets=None,
         limit=None,
-        followup_discovery=True,
+        followup_discovery_rounds=3,
+        batch_llm_stages=False,
     ):
         return [
             StageSpec(
@@ -177,7 +198,8 @@ def test_run_pipeline_raises_clear_error_for_failed_command(tmp_path: Path, monk
         model_name: str,
         max_buckets=None,
         limit=None,
-        followup_discovery=True,
+        followup_discovery_rounds=3,
+        batch_llm_stages=False,
     ):
         return [
             StageSpec(
@@ -212,7 +234,8 @@ def test_run_pipeline_writes_manifest_for_completed_stage(tmp_path: Path, monkey
         model_name: str,
         max_buckets=None,
         limit=None,
-        followup_discovery=True,
+        followup_discovery_rounds=3,
+        batch_llm_stages=False,
     ):
         return [
             StageSpec(
@@ -228,6 +251,10 @@ def test_run_pipeline_writes_manifest_for_completed_stage(tmp_path: Path, monkey
     def fake_run(command, check):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text('{"firm_name":"Issuu"}\n', encoding="utf-8")
+        cost_log_path(output_path).write_text(
+            '{"stage":"discovery","estimated_cost_usd":0.123,"input_tokens":100,"cached_input_tokens":0,"uncached_input_tokens":100,"output_tokens":50,"web_search_calls":1,"input_cost_usd":0.01,"output_cost_usd":0.02,"web_search_cost_usd":0.093}\n',
+            encoding="utf-8",
+        )
 
     monkeypatch.setattr("run_pipeline.build_stage_specs", fake_build_stage_specs)
     monkeypatch.setattr(
@@ -255,4 +282,6 @@ def test_run_pipeline_writes_manifest_for_completed_stage(tmp_path: Path, monkey
     assert manifest["success"] is True
     saved = loads(manifest_path.read_text(encoding="utf-8"))
     assert saved["row_counts"]["discovery"] == 1
+    assert saved["costs_usd"]["discovery"] == 0.123
+    assert saved["estimated_cost_usd_total"] == 0.123
     assert saved["stages"][0]["status"] == "completed"
