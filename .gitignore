@@ -1,4 +1,11 @@
-.venv/
+.env
+.env.*
 __pycache__/
 *.pyc
 .pytest_cache/
+
+data/candidates/
+data/runs/
+*.parquet
+*.jsonl
+*.csv

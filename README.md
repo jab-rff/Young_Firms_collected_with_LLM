@@ -1,35 +1,53 @@
-# Recall-First Company Discovery Pipeline
+# Young Firms Staged Pipeline
 
-This repository contains a minimal Python project skeleton for a recall-first company discovery workflow. The goal is to keep the code easy to inspect, easy to extend, and free of unnecessary abstractions.
+This repository is organized around a clean staged pipeline for finding firms that may have been founded in Denmark and later moved their own executive headquarters or main operations abroad.
 
-## Planned Stages
-1. Query generation
-   Produce broad search terms and source-specific query variants.
-2. Retrieval
-   Collect raw local inputs from files or manual exports. No external APIs are used yet.
-3. Candidate extraction
-   Parse retrieved text into candidate company records.
-4. Deduplication
-   Merge repeated candidates using simple deterministic rules.
-5. Export for later verification
-   Write review-ready outputs for downstream checking and validation.
+The process now starts from a validated seed list and uses LLM-driven snowball discovery to find additional, less-known firms. The pipeline remains recall-first through Model 1, becomes stricter in Model 2, uses a conservative gate in Model 3, and then hands off to human close reading.
 
-## Structure
-- `src/recall/`: pipeline-stage modules
-- `src/common/`: shared helpers and schemas
-- `prompts/`: prompt drafts and templates
-- `data/raw/`: raw source material
-- `data/candidates/`: extracted or deduplicated candidate outputs
-- `tests/`: lightweight tests
+## Stages
+1. Validated seed list
+   Load `preliminary_data_28_04.csv`. Use all names as exclusions. Treat `founding_origin == "in Denmark"` as the core relocation subset.
+2. Snowball discovery
+   Use OpenAI `web_search` to find additional firms outside the known seed list, using sector and destination buckets only.
+3. Deduplication against known firms
+   Remove already-known firms and merge repeated candidates by normalized firm name.
+4. Model 1 candidate extraction
+   Recall-oriented structuring of the deduplicated snowball outputs.
+5. Model 2 enrichment/reconciliation
+   Stricter cross-source reconciliation with cleaned names and grouped evidence.
+6. Model 3 strict validation
+   Conservative final LLM gate against the research definition.
+7. Human close reading
+   Review CSV output with evidence snippets, URLs, and validation labels preserved.
+
+## Key Files
+- `src/seed_list.py`
+- `snowball_discovery.py`
+- `deduplicate_snowball_candidates.py`
+- `model_1_candidate_extraction.py`
+- `model_2_enrichment.py`
+- `model_3_validation.py`
+- `export_final_review.py`
+
+## Command Order
+```bash
+python snowball_discovery.py --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001.jsonl --round 1 --model gpt-5-mini --max-buckets 5
+
+python deduplicate_snowball_candidates.py --input data/discovery/snowball_round_001.jsonl --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001_deduped.jsonl
+
+python model_1_candidate_extraction.py --input data/discovery/snowball_round_001_deduped.jsonl --output data/model1/snowball_round_001_candidates.jsonl --model gpt-5-mini
+
+python model_2_enrichment.py --input data/model1/snowball_round_001_candidates.jsonl --output data/model2/snowball_round_001_enriched.jsonl --model gpt-5-mini
+
+python model_3_validation.py --input data/model2/snowball_round_001_enriched.jsonl --output data/model3/snowball_round_001_validated.jsonl --model gpt-5-mini
+
+python export_final_review.py --input data/model3/snowball_round_001_validated.jsonl --output data/review/snowball_round_001_review.csv
+```
 
 ## Development
-Use Python only. Keep modules small, prefer functions over classes, and avoid external services for now.
-
-Suggested commands:
-
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
-pytest
+python -m pytest -v
 ```

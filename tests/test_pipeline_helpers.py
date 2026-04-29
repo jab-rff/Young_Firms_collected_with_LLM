@@ -3,7 +3,7 @@ from pathlib import Path
 from src.aggregation import aggregate_mentions
 from src.data_models import Mention, RetrievedItem
 from src.mention_extraction import extract_mentions
-from src.normalization import normalize_company_name
+from src.normalization import normalize_company_name, strip_trailing_legal_suffixes
 
 from recall.candidate_extraction import extract_candidates
 from recall.deduplication import deduplicate_candidates
@@ -330,6 +330,52 @@ def test_extract_mentions_keeps_valid_one_word_firms_in_context() -> None:
         assert expected in names
 
 
+def test_extract_mentions_strips_danish_adjective_prefix() -> None:
+    names = _extract_names("Fynske FJ Industries was founded in Denmark and later moved headquarters abroad.")
+    assert "FJ Industries" in names
+    assert "Fynske FJ Industries" not in names
+
+
+def test_extract_mentions_strips_incomplete_legal_suffix_fragment() -> None:
+    names = _extract_names("FJ Industries A later moved headquarters abroad.")
+    assert "FJ Industries" in names
+    assert "FJ Industries A" not in names
+
+
+def test_extract_mentions_rejects_meta_words_and_keeps_real_firms() -> None:
+    names = _extract_names(
+        "Our corporate headquarters moved abroad after the merger. "
+        "Denmark-origin company later headquartered abroad. "
+        "We described the move in the report. "
+        "Socket's headquarters later moved abroad. "
+        "Coana was founded in Denmark. "
+        "Unity Technologies was founded in Denmark. "
+        "Unity Software later headquartered in San Francisco."
+    )
+    for rejected in {"Our", "We", "Danish", "Denmark-origin", "S", "Socket's"}:
+        assert rejected not in names
+    for expected in {"Socket", "Coana", "Unity Technologies", "Unity Software"}:
+        assert expected in names
+
+
+def test_strip_trailing_legal_suffixes_for_display_examples() -> None:
+    assert strip_trailing_legal_suffixes("Issuu Inc") == "Issuu"
+    assert strip_trailing_legal_suffixes("Sitecore A/S") == "Sitecore"
+    assert strip_trailing_legal_suffixes("Sitecore Corporation A/S") == "Sitecore"
+    assert strip_trailing_legal_suffixes("Boxever Ltd") == "Boxever"
+    assert strip_trailing_legal_suffixes("Unity Software Inc") == "Unity Software"
+    assert strip_trailing_legal_suffixes("Over the Edge I/S") == "Over the Edge"
+
+
+def test_normalize_company_name_strips_legal_suffixes_from_examples() -> None:
+    assert normalize_company_name("Issuu Inc") == "issuu"
+    assert normalize_company_name("Sitecore A/S") == "sitecore"
+    assert normalize_company_name("Sitecore Corporation A/S") == "sitecore"
+    assert normalize_company_name("Boxever Ltd") == "boxever"
+    assert normalize_company_name("Unity Software Inc") == "unity software"
+    assert normalize_company_name("Over the Edge I/S") == "over the edge"
+
+
 def test_aggregate_mentions_merges_issuu_legal_suffix_variants() -> None:
     mentions = [
         Mention(
@@ -365,6 +411,7 @@ def test_aggregate_mentions_merges_issuu_legal_suffix_variants() -> None:
     candidates = aggregate_mentions(mentions)
 
     assert len(candidates) == 1
+    assert candidates[0].firm_name == "Issuu"
     assert candidates[0].normalized_name == "issuu"
     assert set(candidates[0].raw_name_variants) == {"Issuu", "Issuu Inc"}
 
@@ -404,5 +451,6 @@ def test_aggregate_mentions_merges_sitecore_legal_suffix_variants() -> None:
     candidates = aggregate_mentions(mentions)
 
     assert len(candidates) == 1
+    assert candidates[0].firm_name == "Sitecore"
     assert candidates[0].normalized_name == "sitecore"
     assert set(candidates[0].raw_name_variants) == {"Sitecore A/S", "Sitecore Corporation"}

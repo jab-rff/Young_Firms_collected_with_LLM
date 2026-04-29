@@ -24,15 +24,22 @@ _CONTEXT_TERMS = (
     "merger",
     "launched",
     "based in",
+    "incorporated",
+    "main office",
+    "main operations",
+    "executive base",
+    "leadership",
     "stiftet",
     "grundlagt",
     "hovedkontor",
     "flyttede",
     "virksomhed",
     "selskab",
-    "opkøbt",
+    "opk\u00f8bt",
 )
-_CAP_WORD = r"[A-ZÆØÅ][A-Za-zÆØÅæøå0-9&'.\-]*"
+_CAP_LETTERS = "A-Z\u00c6\u00d8\u00c5"
+_LOWER_LETTERS = "A-Za-z\u00c6\u00d8\u00c5\u00e6\u00f8\u00e5"
+_CAP_WORD = rf"[{_CAP_LETTERS}][{_LOWER_LETTERS}0-9&'\-]*(?:\.[{_LOWER_LETTERS}0-9&'\-]+)*"
 _SHORT_NAME_PATTERN = rf"{_CAP_WORD}(?:\s+{_CAP_WORD}){{0,2}}"
 _STRONG_COMPANY_PATTERN = re.compile(
     rf"\b({_CAP_WORD}(?:\s+{_CAP_WORD}){{0,4}}\s+{_LEGAL_SUFFIXES})\b"
@@ -42,7 +49,7 @@ _CONTEXT_BEFORE_PATTERN = re.compile(
     rf"(?=[^\n.]{{0,80}}\b(?i:{'|'.join(re.escape(term) for term in _CONTEXT_TERMS)})\b)",
 )
 _CONTEXT_AFTER_PATTERN = re.compile(
-    rf"\b(?i:founded|acquired|launched|company|firm|startup|virksomhed|selskab|opkøbt)\b"
+    rf"\b(?i:founded|acquired|launched|company|firm|startup|virksomhed|selskab|opk\u00f8bt)\b"
     rf"(?:\s+(?:the|a|an))?\s+({_SHORT_NAME_PATTERN})\b",
 )
 _STOP_PHRASES = {
@@ -50,7 +57,7 @@ _STOP_PHRASES = {
     "Copenhagen",
     "Denmark",
     "European Union",
-    "København",
+    "K\u00f8benhavn",
     "London",
     "New York",
     "Palo Alto",
@@ -62,15 +69,37 @@ _GENERIC_SINGLE_WORDS = {
     "Article",
     "Artiklen",
     "Company",
+    "Corporate",
+    "Danish",
+    "Danish-founded",
+    "Denmark-origin",
+    "Executive",
     "Firm",
     "Historien",
     "HQ",
+    "Headquarters",
+    "Leadership",
+    "Main",
+    "Office",
+    "Operations",
+    "Our",
     "Presence",
     "Profilen",
+    "S",
     "Software",
+    "Source",
     "Startup",
     "Technologies",
+    "We",
     "Virksomhed",
+}
+_GENERIC_PREFIX_WORDS = {
+    "dansk",
+    "danske",
+    "danish",
+    "danish-founded",
+    "denmark-origin",
+    "fynske",
 }
 _TITLE_PREFIXES = {"About", "How", "What", "When", "Why"}
 _HEADLINE_VERBS = {
@@ -89,7 +118,7 @@ _GEOGRAPHY_WORDS = {
     "copenhagen",
     "denmark",
     "francisco",
-    "københavn",
+    "k\u00f8benhavn",
     "london",
     "new",
     "palo",
@@ -177,13 +206,23 @@ def _iter_company_like_names(text: str) -> list[tuple[int, str]]:
 
 
 def _clean_name(name: str) -> str:
-    return name.strip(" \t\r\n.,;:()[]")
+    cleaned = name.strip(" \t\r\n.,;:()[]")
+    cleaned = re.sub(r"['’]s$", "", cleaned)
+    words = cleaned.split()
+
+    while len(words) >= 2 and words[0].strip(".,;:()[]").lower() in _GENERIC_PREFIX_WORDS:
+        words = words[1:]
+
+    if len(words) >= 2 and words[-1] in {"A", "S"}:
+        words = words[:-1]
+
+    return " ".join(words).strip(" \t\r\n.,;:()[]")
 
 
 def _keep_name(name: str) -> bool:
     if "\n" in name or "\r" in name:
         return False
-    if re.search(r"[.!?]\s+[A-ZÆØÅ]", name):
+    if re.search(rf"[.!?]\s+[{_CAP_LETTERS}]", name):
         return False
     if name in _STOP_PHRASES:
         return False
@@ -231,7 +270,7 @@ def _looks_like_person_name(name: str, words: list[str]) -> bool:
         return False
     if words[0] not in _KNOWN_FIRST_NAMES:
         return False
-    return all(re.fullmatch(r"[A-ZÆØÅ][A-Za-zÆØÅæøå'.\-]+", word) for word in words)
+    return all(re.fullmatch(rf"[{_CAP_LETTERS}][{_LOWER_LETTERS}'.\-]+", word) for word in words)
 
 
 def _context_window(text: str, offset: int, radius: int = 240) -> str:

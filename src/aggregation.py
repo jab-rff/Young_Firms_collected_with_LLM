@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from src.data_models import CandidateFirm, Mention
-from src.normalization import make_candidate_id
+from src.normalization import make_candidate_id, strip_trailing_legal_suffixes
 
 
 def aggregate_mentions(mentions: list[Mention]) -> list[CandidateFirm]:
@@ -21,7 +21,7 @@ def aggregate_mentions(mentions: list[Mention]) -> list[CandidateFirm]:
         candidates.append(
             CandidateFirm(
                 candidate_id=make_candidate_id(normalized_name),
-                firm_name=raw_variants[0],
+                firm_name=_display_firm_name(raw_variants, normalized_name),
                 normalized_name=normalized_name,
                 raw_name_variants=raw_variants,
                 mention_ids=[mention.mention_id for mention in group],
@@ -31,3 +31,15 @@ def aggregate_mentions(mentions: list[Mention]) -> list[CandidateFirm]:
             )
         )
     return candidates
+
+
+def _display_firm_name(raw_variants: list[str], normalized_name: str) -> str:
+    display_names = []
+    for name in raw_variants:
+        stripped = strip_trailing_legal_suffixes(name)
+        if stripped:
+            display_names.append(stripped)
+    display_variants = sorted(set(display_names), key=lambda name: (len(name), name.casefold()))
+    if display_variants:
+        return display_variants[0]
+    return normalized_name

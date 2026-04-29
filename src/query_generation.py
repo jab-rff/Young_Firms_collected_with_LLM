@@ -8,101 +8,67 @@ from src.data_models import Query
 
 
 def generate_seed_queries() -> list[Query]:
-    """Generate comprehensive search queries in English and Danish.
-    
-    Returns a list of diverse, high-recall queries organized by family and priority.
-    Queries are designed to surface companies that:
-    - Were founded in Denmark (Copenhagen, Aarhus, etc.)
-    - Later moved their executive HQ abroad
-    - May have been acquired or merged with international companies
-    
-    Query families:
-    - hq_move: Direct HQ relocation language
-    - startup_hq: Startup + headquarters combinations
-    - relocation: Generic relocation context
-    - location_pairs: Specific city/country pairs (Copenhagen → SF, etc.)
-    - acquisition: M&A context combined with founding
-    - industry_dk: Industry + Danish origin combinations
-    """
+    """Generate HQ-relocation-first search queries in English and Danish."""
     created_at = datetime.now(timezone.utc).isoformat()
-    
-    # Each tuple: (query_id, query_text, language, family, priority)
-    # Priority: 1=highest recall, 2=high, 3=standard, 4=exploratory
+
     query_specs = [
-        # English: Direct HQ move language (priority 1)
-        ("q_en_001", '"founded in Denmark" "headquarters"', "en", "hq_move", 1),
-        ("q_en_002", '"Denmark" "moved headquarters"', "en", "hq_move", 1),
-        ("q_en_003", '"Copenhagen" "relocated headquarters"', "en", "hq_move", 1),
-        ("q_en_004", '"Danish startup" "moved HQ"', "en", "hq_move", 1),
-        ("q_en_005", '"founded in Copenhagen" "now headquartered"', "en", "hq_move", 1),
-        
-        # English: Startup + HQ combinations (priority 1-2)
-        ("q_en_006", '"Danish startup" "headquarters" "United States"', "en", "startup_hq", 1),
-        ("q_en_007", '"Danish company" "moved" "San Francisco"', "en", "startup_hq", 1),
-        ("q_en_008", '"Danish tech" "headquarters" abroad', "en", "startup_hq", 2),
-        ("q_en_009", '"Danish founded" "US headquarters"', "en", "startup_hq", 2),
-        
-        # English: Location pairs (priority 1-2)
-        ("q_en_010", '"Copenhagen" "San Francisco" "founder"', "en", "location_pairs", 1),
-        ("q_en_011", '"Copenhagen" "Palo Alto" company', "en", "location_pairs", 1),
-        ("q_en_012", '"Copenhagen" "Boston" "headquarters"', "en", "location_pairs", 2),
-        ("q_en_013", '"Copenhagen" "New York" company moved', "en", "location_pairs", 2),
-        ("q_en_014", '"Copenhagen" "London" "headquarters"', "en", "location_pairs", 2),
-        ("q_en_015", '"Denmark" "Chicago" company HQ', "en", "location_pairs", 2),
-        
-        # English: Generic relocation (priority 2)
-        ("q_en_016", '"Denmark" "relocated headquarters" company', "en", "relocation", 2),
-        ("q_en_017", 'Danish company "moved" headquarters', "en", "relocation", 2),
-        ("q_en_018", '"Danish" "executive HQ" abroad', "en", "relocation", 2),
-        
-        # English: Acquisition context (priority 2-3)
-        ("q_en_019", '"Danish company" acquired "headquarters"', "en", "acquisition", 2),
-        ("q_en_020", '"founded in Denmark" acquired "moved"', "en", "acquisition", 2),
-        ("q_en_021", '"Danish startup" "acquired by" US company', "en", "acquisition", 3),
-        
-        # English: Industry + Danish combinations (priority 2-3)
-        ("q_en_022", '"Danish software" company "headquarters"', "en", "industry_dk", 2),
-        ("q_en_023", '"Danish SaaS" company moved', "en", "industry_dk", 2),
-        ("q_en_024", '"Danish tech company" relocated', "en", "industry_dk", 2),
-        ("q_en_025", '"Danish startup" US tech', "en", "industry_dk", 3),
-        
-        # Danish: Direct HQ move language (priority 1)
-        ("q_da_001", '"grundlagt i Danmark" "hovedkontor"', "da", "hq_move", 1),
-        ("q_da_002", '"Danmark" "flyttede hovedkvarter"', "da", "hq_move", 1),
-        ("q_da_003", '"København" "flyttet hovedkvarter"', "da", "hq_move", 1),
-        ("q_da_004", '"dansk startup" "hovedkvarter" udlandet', "da", "hq_move", 1),
-        ("q_da_005", '"grundlagt København" "nu hovedkvarter"', "da", "hq_move", 1),
-        
-        # Danish: Startup + HQ combinations (priority 1-2)
-        ("q_da_006", '"dansk startup" "hovedkvarter" "USA"', "da", "startup_hq", 1),
-        ("q_da_007", '"dansk virksomhed" "San Francisco"', "da", "startup_hq", 1),
-        ("q_da_008", '"dansk tech" "hovedkvarter" "Silicon Valley"', "da", "startup_hq", 2),
-        ("q_da_009", '"dansk grundlagt" "amerikanske" hovedkvarter', "da", "startup_hq", 2),
-        
-        # Danish: Location pairs (priority 1-2)
-        ("q_da_010", '"København" "San Francisco" virksomhed', "da", "location_pairs", 1),
-        ("q_da_011", '"København" "Palo Alto" stifter', "da", "location_pairs", 1),
-        ("q_da_012", '"København" "Boston" "hovedkvarter"', "da", "location_pairs", 2),
-        ("q_da_013", '"København" "New York" virksomhed', "da", "location_pairs", 2),
-        ("q_da_014", '"Danmark" "Chicago" selskab', "da", "location_pairs", 2),
-        
-        # Danish: Generic relocation (priority 2)
-        ("q_da_015", '"Danmark" "ledelsesmæssigt" hovedkvarter udlandet', "da", "relocation", 2),
-        ("q_da_016", 'dansk virksomhed "flyttet" hovedkvarter', "da", "relocation", 2),
-        ("q_da_017", '"dansk" "ledelses HQ" udlandet', "da", "relocation", 2),
-        
-        # Danish: Acquisition context (priority 2-3)
-        ("q_da_018", '"dansk virksomhed" opkøbt "hovedkvarter"', "da", "acquisition", 2),
-        ("q_da_019", '"grundlagt Danmark" opkøbt "flyttet"', "da", "acquisition", 2),
-        ("q_da_020", '"dansk startup" "købt af" amerikansk', "da", "acquisition", 3),
-        
-        # Danish: Industry + Danish combinations (priority 2-3)
-        ("q_da_021", '"dansk software" virksomhed "hovedkvarter"', "da", "industry_dk", 2),
-        ("q_da_022", '"dansk SaaS" virksomhed flyttet', "da", "industry_dk", 2),
-        ("q_da_023", '"dansk tech-virksomhed" "hovedkvarter"', "da", "industry_dk", 2),
-        ("q_da_024", '"dansk startup" USA teknologi', "da", "industry_dk", 3),
+        # explicit_hq_move
+        ("q_en_001", '"Danish startup moved headquarters abroad"', "en", "explicit_hq_move"),
+        ("q_en_002", '"Danish company moved HQ from Copenhagen"', "en", "explicit_hq_move"),
+        ("q_en_003", '"Danish company relocated headquarters to the US"', "en", "explicit_hq_move"),
+        ("q_en_004", '"Danish startup moved main office to London"', "en", "explicit_hq_move"),
+        ("q_da_001", '"dansk virksomhed flyttede hovedkvarter til udlandet"', "da", "explicit_hq_move"),
+        ("q_da_002", '"dansk startup flyttede hovedkontor til USA"', "da", "explicit_hq_move"),
+        ("q_da_003", '"dansk firma flyttede hovedkontor fra København"', "da", "explicit_hq_move"),
+        ("q_da_004", '"dansk virksomhed flyttede ledelsen til udlandet"', "da", "explicit_hq_move"),
+
+        # implicit_foreign_hq
+        ("q_en_005", '"founded in Denmark now headquartered in"', "en", "implicit_foreign_hq"),
+        ("q_en_006", '"Danish-founded company now based in the United States"', "en", "implicit_foreign_hq"),
+        ("q_en_007", '"Denmark-founded software company headquarters San Francisco"', "en", "implicit_foreign_hq"),
+        ("q_en_008", '"Danish company now headquartered in London"', "en", "implicit_foreign_hq"),
+        ("q_da_005", '"grundlagt i Danmark nu hovedkvarter i udlandet"', "da", "implicit_foreign_hq"),
+        ("q_da_006", '"dansk softwarevirksomhed nu baseret i USA"', "da", "implicit_foreign_hq"),
+        ("q_da_007", '"dansk virksomhed nu hovedkvarter i London"', "da", "implicit_foreign_hq"),
+        ("q_da_008", '"grundlagt i Danmark nu baseret i udlandet"', "da", "implicit_foreign_hq"),
+
+        # copenhagen_to_foreign_hq
+        ("q_en_009", '"founded in Copenhagen headquartered in San Francisco"', "en", "copenhagen_to_foreign_hq"),
+        ("q_en_010", '"Copenhagen company now headquartered in New York"', "en", "copenhagen_to_foreign_hq"),
+        ("q_en_011", '"Copenhagen startup headquartered in London"', "en", "copenhagen_to_foreign_hq"),
+        ("q_en_012", '"Copenhagen founded company headquarters Boston"', "en", "copenhagen_to_foreign_hq"),
+        ("q_da_009", '"grundlagt i København hovedkvarter i San Francisco"', "da", "copenhagen_to_foreign_hq"),
+        ("q_da_010", '"København virksomhed nu hovedkvarter i New York"', "da", "copenhagen_to_foreign_hq"),
+        ("q_da_011", '"København startup nu hovedkontor i London"', "da", "copenhagen_to_foreign_hq"),
+        ("q_da_012", '"grundlagt i København nu baseret i USA"', "da", "copenhagen_to_foreign_hq"),
+
+        # danish_founded_now_abroad
+        ("q_en_013", '"Danish-founded company now abroad headquarters"', "en", "danish_founded_now_abroad"),
+        ("q_en_014", '"founded in Denmark company now based abroad"', "en", "danish_founded_now_abroad"),
+        ("q_en_015", '"Danish startup now operating from the US"', "en", "danish_founded_now_abroad"),
+        ("q_en_016", '"founded in Denmark now operating from London"', "en", "danish_founded_now_abroad"),
+        ("q_da_013", '"grundlagt i Danmark nu virksomhed i udlandet"', "da", "danish_founded_now_abroad"),
+        ("q_da_014", '"dansk startup nu baseret i USA"', "da", "danish_founded_now_abroad"),
+        ("q_da_015", '"grundlagt i Danmark nu opererer fra London"', "da", "danish_founded_now_abroad"),
+        ("q_da_016", '"dansk virksomhed nu opererer fra udlandet"', "da", "danish_founded_now_abroad"),
+
+        # executive_base_abroad
+        ("q_en_017", '"Danish company executive base abroad"', "en", "executive_base_abroad"),
+        ("q_en_018", '"founded in Denmark main office in the US"', "en", "executive_base_abroad"),
+        ("q_en_019", '"Danish startup main operations in London"', "en", "executive_base_abroad"),
+        ("q_en_020", '"Denmark-founded company leadership moved abroad"', "en", "executive_base_abroad"),
+        ("q_da_017", '"dansk virksomhed ledelsesbase i udlandet"', "da", "executive_base_abroad"),
+        ("q_da_018", '"grundlagt i Danmark hovedledelse i USA"', "da", "executive_base_abroad"),
+        ("q_da_019", '"dansk startup hovedkontor og drift i London"', "da", "executive_base_abroad"),
+        ("q_da_020", '"dansk virksomhed flyttede hoveddriften til udlandet"', "da", "executive_base_abroad"),
+
+        # acquisition_overlap (small secondary family only)
+        ("q_en_021", '"Danish startup moved headquarters then acquired"', "en", "acquisition_overlap"),
+        ("q_en_022", '"founded in Denmark moved HQ acquired"', "en", "acquisition_overlap"),
+        ("q_da_021", '"dansk virksomhed flyttede hovedkvarter og blev opkøbt"', "da", "acquisition_overlap"),
+        ("q_da_022", '"grundlagt i Danmark flyttede hovedkontor og blev opkøbt"', "da", "acquisition_overlap"),
     ]
-    
+
     return [
         Query(
             query_id=query_id,
@@ -111,33 +77,25 @@ def generate_seed_queries() -> list[Query]:
             family=family,
             created_at=created_at,
         )
-        for query_id, query_text, language, family, _priority in query_specs
+        for query_id, query_text, language, family in query_specs
     ]
 
 
 def generate_extended_queries() -> list[Query]:
-    """Generate additional exploratory queries for higher recall.
-    
-    These queries are less structured and more exploratory, designed to capture
-    edge cases and less obvious mentions of HQ relocations.
-    """
+    """Generate additional HQ-relocation exploratory queries for higher recall."""
     created_at = datetime.now(timezone.utc).isoformat()
-    
+
     query_specs = [
-        # English: Broader exploratory queries
-        ("q_en_ex_001", "Danish company Silicon Valley", "en", "exploratory", 3),
-        ("q_en_ex_002", "Danish founders moved headquarters", "en", "exploratory", 3),
-        ("q_en_ex_003", "Copenhagen startup relocated", "en", "exploratory", 3),
-        ("q_en_ex_004", "Danish SaaS company US expansion", "en", "exploratory", 3),
-        ("q_en_ex_005", "Danish tech unicorn moved HQ", "en", "exploratory", 3),
-        
-        # Danish: Broader exploratory queries
-        ("q_da_ex_001", "dansk virksomhed Silicon Valley", "da", "exploratory", 3),
-        ("q_da_ex_002", "danske stiftere hovedkvarter", "da", "exploratory", 3),
-        ("q_da_ex_003", "København startup Amerika", "da", "exploratory", 3),
-        ("q_da_ex_004", "dansk software-virksomhed USA", "da", "exploratory", 3),
+        ("q_en_ex_001", "Danish startup now headquartered abroad", "en", "exploratory"),
+        ("q_en_ex_002", "Copenhagen company main office United States", "en", "exploratory"),
+        ("q_en_ex_003", "founded in Denmark executive base London", "en", "exploratory"),
+        ("q_en_ex_004", "Danish software company operating from San Francisco", "en", "exploratory"),
+        ("q_da_ex_001", "dansk startup nu hovedkvarter i udlandet", "da", "exploratory"),
+        ("q_da_ex_002", "København virksomhed hovedkontor USA", "da", "exploratory"),
+        ("q_da_ex_003", "grundlagt i Danmark ledelse i London", "da", "exploratory"),
+        ("q_da_ex_004", "dansk softwarevirksomhed opererer fra San Francisco", "da", "exploratory"),
     ]
-    
+
     return [
         Query(
             query_id=query_id,
@@ -146,24 +104,15 @@ def generate_extended_queries() -> list[Query]:
             family=family,
             created_at=created_at,
         )
-        for query_id, query_text, language, family, _priority in query_specs
+        for query_id, query_text, language, family in query_specs
     ]
 
 
 def generate_all_queries(include_exploratory: bool = False) -> list[Query]:
-    """Generate all seed queries, optionally including exploratory queries.
-    
-    Args:
-        include_exploratory: If True, include broader exploratory queries (lower precision).
-        
-    Returns:
-        Sorted list of queries by family and language.
-    """
+    """Generate all seed queries, optionally including exploratory queries."""
     queries = generate_seed_queries()
     if include_exploratory:
         queries.extend(generate_extended_queries())
-    
-    # Sort by language, then family, then query_id for consistent output
     return sorted(queries, key=lambda q: (q.language, q.family, q.query_id))
 
 
@@ -180,26 +129,27 @@ def queries_by_family(queries: list[Query]) -> dict[str, list[Query]]:
 def queries_summary(queries: list[Query]) -> str:
     """Generate a human-readable summary of the query set."""
     by_family = queries_by_family(queries)
-    by_language = {}
+    by_language: dict[str, int] = {}
     for query in queries:
-        lang = query.language
-        if lang not in by_language:
-            by_language[lang] = 0
-        by_language[lang] += 1
-    
+        by_language[query.language] = by_language.get(query.language, 0) + 1
+
     lines = [
-        f"Query Generation Summary",
-        f"{'='*50}",
+        "Query Generation Summary",
+        f"{'=' * 50}",
         f"Total queries: {len(queries)}",
-        f"Languages: {', '.join(sorted(by_language.keys()))} ({', '.join(f'{lang}:{count}' for lang, count in sorted(by_language.items()))})",
+        "Languages: "
+        + ", ".join(sorted(by_language.keys()))
+        + " ("
+        + ", ".join(f"{lang}:{count}" for lang, count in sorted(by_language.items()))
+        + ")",
         f"Families: {', '.join(sorted(by_family.keys()))}",
-        f"",
+        "",
     ]
-    
+
     for family in sorted(by_family.keys()):
         queries_in_family = by_family[family]
         en_count = sum(1 for q in queries_in_family if q.language == "en")
         da_count = sum(1 for q in queries_in_family if q.language == "da")
-        lines.append(f"  {family:20} | EN: {en_count:2} | DA: {da_count:2} | Total: {len(queries_in_family):2}")
-    
+        lines.append(f"  {family:24} | EN: {en_count:2} | DA: {da_count:2} | Total: {len(queries_in_family):2}")
+
     return "\n".join(lines)

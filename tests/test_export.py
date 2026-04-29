@@ -14,8 +14,8 @@ def sample_candidates():
     return [
         CandidateFirm(
             candidate_id="cand_test_001",
-            firm_name="Test Company Inc",
-            normalized_name="test company inc",
+            firm_name="Test Company",
+            normalized_name="test company",
             raw_name_variants=["Test Company Inc", "Test Company", "TestCo Inc"],
             mention_ids=["ment_001", "ment_002"],
             source_names=["Wikipedia", "Tech News"],
@@ -24,8 +24,8 @@ def sample_candidates():
         ),
         CandidateFirm(
             candidate_id="cand_test_002",
-            firm_name="Another Corp",
-            normalized_name="another corp",
+            firm_name="Another",
+            normalized_name="another",
             raw_name_variants=["Another Corp"],
             mention_ids=["ment_003"],
             source_names=["LinkedIn"],
@@ -50,7 +50,7 @@ def sample_mentions():
             language="en",
             retrieved_at="2025-04-27T10:00:00Z",
             firm_name_raw="Test Company Inc",
-            normalized_name="test company inc",
+            normalized_name="test company",
             evidence_text="Test Company Inc was founded in Copenhagen, Denmark and later moved to San Francisco.",
         ),
         Mention(
@@ -64,7 +64,7 @@ def sample_mentions():
             language="en",
             retrieved_at="2025-04-27T11:00:00Z",
             firm_name_raw="Test Company",
-            normalized_name="test company inc",
+            normalized_name="test company",
             evidence_text="The company relocated its headquarters from Copenhagen to San Francisco.",
         ),
         Mention(
@@ -78,7 +78,7 @@ def sample_mentions():
             language="da",
             retrieved_at="2025-04-27T12:00:00Z",
             firm_name_raw="Another Corp",
-            normalized_name="another corp",
+            normalized_name="another",
             evidence_text="Another Corp blev grundlagt i Danmark og flyttede senere til USA.",
         ),
     ]
@@ -92,7 +92,8 @@ def test_prepare_review_row(sample_candidates, sample_mentions):
     row = prepare_review_row(candidate, mentions)
     
     assert row["candidate_id"] == "cand_test_001"
-    assert row["firm_name"] == "Test Company Inc"
+    assert row["firm_name"] == "Test Company"
+    assert "Test Company Inc" in row["raw_name_variants"]
     assert row["mention_count"] == "2"
     assert row["languages"] == "en"
     assert row["unique_sources"] == "2"
@@ -129,7 +130,7 @@ def test_prepare_review_row_bilingual(sample_candidates, sample_mentions):
         language="da",
         retrieved_at="2025-04-27T11:00:00Z",
         firm_name_raw="Test Company",
-        normalized_name="test company inc",
+        normalized_name="test company",
         evidence_text="Test Company blev grundlagt i Danmark.",
     )
     mentions = [mention_en, mention_da]
@@ -227,8 +228,8 @@ def test_export_csv_unicode(tmp_path, sample_candidates):
     # Create candidate with Danish characters and matching mention
     candidate = CandidateFirm(
         candidate_id="cand_unicode_test",
-        firm_name="Søren Løsing A/S",
-        normalized_name="søren løsing a/s",
+        firm_name="Søren Løsing",
+        normalized_name="søren løsing",
         raw_name_variants=["Søren Løsing A/S", "Søren Løsing"],
         mention_ids=["ment_unicode"],
         source_names=["Dansk Nyheder"],
@@ -247,7 +248,7 @@ def test_export_csv_unicode(tmp_path, sample_candidates):
         language="da",
         retrieved_at="2025-04-27T10:00:00Z",
         firm_name_raw="Søren Løsing A/S",
-        normalized_name="søren løsing a/s",
+        normalized_name="søren løsing",
         evidence_text="Grundlagt i København, Danmark. Flyttet hovedkvarter til USA.",
     )
     

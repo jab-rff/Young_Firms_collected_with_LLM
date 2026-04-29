@@ -12,20 +12,28 @@ _TRAILING_LEGAL_SUFFIX_RE = re.compile(
 )
 
 
+def strip_trailing_legal_suffixes(name: str) -> str:
+    """Strip trailing legal entity suffixes while preserving the core display name."""
+    cleaned = name.strip(" \t\r\n.,;:")
+    cleaned = cleaned.replace("\u2019", "'").replace("`", "'")
+    cleaned = _WHITESPACE_RE.sub(" ", cleaned)
+    if not cleaned:
+        return ""
+
+    stripped = cleaned
+    while True:
+        next_value = _TRAILING_LEGAL_SUFFIX_RE.sub("", stripped).strip(" \t\r\n.,;:")
+        if next_value == stripped:
+            break
+        stripped = next_value
+    return stripped
+
+
 def normalize_company_name(name: str) -> str:
     """Normalize casing, spacing, edge punctuation, and trailing legal suffixes."""
     if "\n" in name or "\r" in name:
         return ""
-    cleaned = name.strip(" \t\r\n.,;:")
-    cleaned = cleaned.replace("’", "'").replace("`", "'")
-    cleaned = _WHITESPACE_RE.sub(" ", cleaned)
-    lowered = cleaned.lower()
-    while True:
-        stripped = _TRAILING_LEGAL_SUFFIX_RE.sub("", lowered).strip(" \t\r\n.,;:")
-        if stripped == lowered:
-            break
-        lowered = stripped
-    return lowered
+    return strip_trailing_legal_suffixes(name).lower()
 
 
 def make_candidate_id(normalized_name: str) -> str:
