@@ -67,7 +67,7 @@ def deduplicate_candidates(records: list[dict[str, Any]], known_names: list[str]
             list(current.get("source_urls") or []),
             list(record.get("source_urls") or []),
         )
-        for field in ("possible_abroad_location", "signal_type", "signal_strength", "short_reason"):
+        for field in ("possible_abroad_location", "signal_type", "signal_strength", "short_reason", "origin_track"):
             current[field] = _merge_text_values(current.get(field), record.get(field))
         bucket = record.get("discovery_bucket")
         if bucket and bucket not in current["discovery_buckets"]:
@@ -90,6 +90,7 @@ def save_deduplicated_csv(records: list[dict[str, Any]], output_path: Path) -> N
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "firm_name",
+        "origin_track",
         "discovery_bucket",
         "discovery_buckets",
         "sector_if_known",

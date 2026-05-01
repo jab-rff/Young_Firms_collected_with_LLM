@@ -27,6 +27,19 @@ def test_build_stage_specs_includes_expected_paths_and_max_buckets() -> None:
     assert stages[-1].output_path == Path("data/review/snowball_round_001_review.csv")
 
 
+def test_build_stage_specs_can_use_founder_abroad_track_paths() -> None:
+    stages = build_stage_specs(
+        round_number=2,
+        known_path=Path("preliminary_data_29_04.csv"),
+        model_name="gpt-5-mini",
+        origin_track="abroad_danish_founders",
+    )
+
+    assert stages[0].output_path == Path("data/discovery/snowball_round_002_abroad_danish_founders.jsonl")
+    assert "--origin-track" in stages[0].command
+    assert "abroad_danish_founders" in stages[0].command
+
+
 def test_build_stage_specs_can_set_followup_discovery_rounds() -> None:
     stages = build_stage_specs(
         round_number=1,
@@ -53,6 +66,18 @@ def test_build_stage_specs_can_enable_batch_llm_stages() -> None:
     assert "--batch" not in stages[0].command
 
 
+def test_build_stage_specs_can_enable_batch_discovery() -> None:
+    stages = build_stage_specs(
+        round_number=1,
+        known_path=Path("preliminary_data_28_04.csv"),
+        model_name="gpt-5-mini",
+        batch_discovery=True,
+    )
+
+    assert "--batch" in stages[0].command
+    assert "--batch" not in stages[2].command
+
+
 def test_run_pipeline_skips_existing_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     known_path = tmp_path / "known.csv"
     known_path.write_text("name,founding_origin,industry\nIssuu,in Denmark,software\n", encoding="utf-8")
@@ -65,10 +90,12 @@ def test_run_pipeline_skips_existing_outputs(tmp_path: Path, monkeypatch: pytest
         round_number: int,
         known_path: Path,
         model_name: str,
+        origin_track="in_denmark",
         max_buckets=None,
         limit=None,
         followup_discovery_rounds=3,
         batch_llm_stages=False,
+        batch_discovery=False,
     ):
         return [
             StageSpec(
@@ -109,10 +136,12 @@ def test_run_pipeline_dry_run_creates_manifest_without_execution(tmp_path: Path,
         round_number: int,
         known_path: Path,
         model_name: str,
+        origin_track="in_denmark",
         max_buckets=None,
         limit=None,
         followup_discovery_rounds=3,
         batch_llm_stages=False,
+        batch_discovery=False,
     ):
         return [
             StageSpec(
@@ -128,8 +157,9 @@ def test_run_pipeline_dry_run_creates_manifest_without_execution(tmp_path: Path,
     monkeypatch.setattr("run_pipeline.build_stage_specs", fake_build_stage_specs)
     monkeypatch.setattr(
         "run_pipeline.build_round_paths",
-        lambda round_number: __import__("src.pipeline_rounds", fromlist=["RoundPaths"]).RoundPaths(
+        lambda round_number, origin_track="in_denmark": __import__("src.pipeline_rounds", fromlist=["RoundPaths"]).RoundPaths(
             round_number=round_number,
+            origin_track=origin_track,
             discovery=tmp_path / "data/discovery/snowball_round_001.jsonl",
             dedup=tmp_path / "data/discovery/snowball_round_001_deduped.jsonl",
             model1=tmp_path / "data/model1/snowball_round_001_candidates.jsonl",
@@ -165,10 +195,12 @@ def test_run_pipeline_raises_clear_error_for_missing_input(tmp_path: Path, monke
         round_number: int,
         known_path: Path,
         model_name: str,
+        origin_track="in_denmark",
         max_buckets=None,
         limit=None,
         followup_discovery_rounds=3,
         batch_llm_stages=False,
+        batch_discovery=False,
     ):
         return [
             StageSpec(
@@ -196,10 +228,12 @@ def test_run_pipeline_raises_clear_error_for_failed_command(tmp_path: Path, monk
         round_number: int,
         known_path: Path,
         model_name: str,
+        origin_track="in_denmark",
         max_buckets=None,
         limit=None,
         followup_discovery_rounds=3,
         batch_llm_stages=False,
+        batch_discovery=False,
     ):
         return [
             StageSpec(
@@ -232,10 +266,12 @@ def test_run_pipeline_writes_manifest_for_completed_stage(tmp_path: Path, monkey
         round_number: int,
         known_path: Path,
         model_name: str,
+        origin_track="in_denmark",
         max_buckets=None,
         limit=None,
         followup_discovery_rounds=3,
         batch_llm_stages=False,
+        batch_discovery=False,
     ):
         return [
             StageSpec(
@@ -259,8 +295,9 @@ def test_run_pipeline_writes_manifest_for_completed_stage(tmp_path: Path, monkey
     monkeypatch.setattr("run_pipeline.build_stage_specs", fake_build_stage_specs)
     monkeypatch.setattr(
         "run_pipeline.build_round_paths",
-        lambda round_number: __import__("src.pipeline_rounds", fromlist=["RoundPaths"]).RoundPaths(
+        lambda round_number, origin_track="in_denmark": __import__("src.pipeline_rounds", fromlist=["RoundPaths"]).RoundPaths(
             round_number=round_number,
+            origin_track=origin_track,
             discovery=tmp_path / "data/discovery/snowball_round_001.jsonl",
             dedup=tmp_path / "data/discovery/snowball_round_001_deduped.jsonl",
             model1=tmp_path / "data/model1/snowball_round_001_candidates.jsonl",

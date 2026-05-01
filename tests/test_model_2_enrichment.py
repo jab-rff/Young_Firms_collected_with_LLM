@@ -107,14 +107,17 @@ def test_parse_enriched_record_preserves_schema_and_prompt_version(model1_candid
     record = parse_enriched_record(candidate, payload)
 
     assert record["firm_name"] == "Zendesk"
+    assert record["origin_track"] == "in_denmark"
     assert record["first_legal_entity_name"] == "Zendesk ApS"
     assert record["founding_year"] == 2007
     assert record["founded_in_denmark"] == "true"
+    assert record["danish_founders_abroad"] == "uncertain"
     assert record["moved_hq_abroad"] == "true"
     assert record["status_today"] == "active"
     assert record["sources_founding"] == ["https://example.com/zendesk/founding"]
+    assert record["sources_founder_identity"] == ["https://example.com/zendesk"]
     assert record["sources_relocation"] == ["https://example.com/zendesk/hq"]
-    assert record["prompt_version"] == "2026-04-28-model2-v2"
+    assert record["prompt_version"] == "2026-04-30-model2-v3"
 
 
 def test_parse_enriched_record_keeps_nulls_and_fallback_sources(model1_candidates: list[dict[str, object]]) -> None:

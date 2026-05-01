@@ -8,6 +8,7 @@ from model_3_validation import parse_validation_record, save_validated_records, 
 def test_parse_validation_record_preserves_fields() -> None:
     record = {
         "firm_name": "Zendesk",
+        "origin_track": "in_denmark",
         "founding_year": 2007,
         "founded_in_denmark": "true",
         "moved_hq_abroad": "true",
@@ -29,7 +30,7 @@ def test_parse_validation_record_preserves_fields() -> None:
     assert parsed["validation_label"] == "true"
     assert parsed["validation_reason"].startswith("The company appears founded")
     assert parsed["needs_human_review"] is True
-    assert parsed["prompt_version_model3"] == "2026-04-28-model3-v2"
+    assert parsed["prompt_version_model3"] == "2026-04-30-model3-v3"
 
 
 def test_save_validated_records_writes_jsonl(tmp_path: Path) -> None:
@@ -77,7 +78,9 @@ def test_parse_validation_record_forces_false_for_founding_year_1998() -> None:
 def test_parse_validation_record_allows_true_for_founding_year_1999() -> None:
     record = {
         "firm_name": "NewCo",
+        "origin_track": "in_denmark",
         "founding_year": 1999,
+        "founded_in_denmark": "true",
     }
     payload = {
         "record": {
@@ -119,8 +122,17 @@ def test_parse_validation_record_unknown_year_stays_unclear_without_post_1999_ev
 def test_update_master_validated_dataset_merges_runs_and_exports_review(tmp_path: Path) -> None:
     master_validated_path = tmp_path / "data" / "cumulative" / "master.jsonl"
     master_review_path = tmp_path / "data" / "cumulative" / "master.csv"
+    track_master_validated_paths = {
+        "in_denmark": tmp_path / "data" / "cumulative" / "master_in_denmark.jsonl",
+        "abroad_danish_founders": tmp_path / "data" / "cumulative" / "master_abroad_danish_founders.jsonl",
+    }
+    track_master_review_paths = {
+        "in_denmark": tmp_path / "data" / "cumulative" / "review_in_denmark.csv",
+        "abroad_danish_founders": tmp_path / "data" / "cumulative" / "review_abroad_danish_founders.csv",
+    }
     existing = {
         "firm_name": "Zendesk",
+        "origin_track": "in_denmark",
         "first_legal_entity_name": "Zendesk ApS",
         "validation_label": "true",
         "needs_human_review": True,
@@ -165,10 +177,86 @@ def test_update_master_validated_dataset_merges_runs_and_exports_review(tmp_path
         ],
         master_validated_path=master_validated_path,
         master_review_path=master_review_path,
+        track_master_validated_paths=track_master_validated_paths,
+        track_master_review_paths=track_master_review_paths,
     )
 
     assert len(merged) == 2
     assert master_review_path.exists()
+    assert track_master_validated_paths["in_denmark"].exists()
+    assert track_master_review_paths["in_denmark"].exists()
+    assert track_master_validated_paths["abroad_danish_founders"].exists()
+    assert track_master_review_paths["abroad_danish_founders"].exists()
     with master_review_path.open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert len(rows) == 2
+    with track_master_review_paths["in_denmark"].open("r", encoding="utf-8", newline="") as handle:
+        in_denmark_rows = list(csv.DictReader(handle))
+    with track_master_review_paths["abroad_danish_founders"].open("r", encoding="utf-8", newline="") as handle:
+        founder_rows = list(csv.DictReader(handle))
+    assert len(in_denmark_rows) == 2
+    assert len(founder_rows) == 0
+
+
+def test_update_master_validated_dataset_routes_record_to_founder_track_master(tmp_path: Path) -> None:
+    master_validated_path = tmp_path / "data" / "cumulative" / "master.jsonl"
+    master_review_path = tmp_path / "data" / "cumulative" / "master.csv"
+    track_master_validated_paths = {
+        "in_denmark": tmp_path / "data" / "cumulative" / "master_in_denmark.jsonl",
+        "abroad_danish_founders": tmp_path / "data" / "cumulative" / "master_abroad_danish_founders.jsonl",
+    }
+    track_master_review_paths = {
+        "in_denmark": tmp_path / "data" / "cumulative" / "review_in_denmark.csv",
+        "abroad_danish_founders": tmp_path / "data" / "cumulative" / "review_abroad_danish_founders.csv",
+    }
+    record = {
+        "firm_name": "Unity",
+        "origin_track": "abroad_danish_founders",
+        "validation_label": "true",
+        "needs_human_review": True,
+        "founded_in_denmark": "false",
+        "danish_founders_abroad": "true",
+        "founding_year": 2004,
+        "founding_city": None,
+        "founding_country_iso": "US",
+        "moved_hq_abroad": "uncertain",
+        "move_year": None,
+        "moved_to_city": None,
+        "moved_to_country_iso": None,
+        "hq_today_city": "San Francisco",
+        "hq_today_country_iso": "US",
+        "status_today": "active",
+        "confidence": "high",
+        "validation_reason": "Founder-abroad fit.",
+        "exclusion_reason": None,
+        "evidence_summary": "Summary.",
+        "founding_evidence": "Founded abroad.",
+        "founder_danish_context": "Danish founders.",
+        "relocation_evidence": "",
+        "ma_evidence": "",
+        "relocation_context": "",
+        "ma_context": "",
+        "uncertainty_note": "",
+        "sources_founding": ["https://example.com/founding"],
+        "sources_founder_identity": ["https://example.com/founders"],
+        "sources_relocation": [],
+        "sources_ma": [],
+        "sources_status_today": ["https://example.com/status"],
+    }
+
+    merged = update_master_validated_dataset(
+        [record],
+        master_validated_path=master_validated_path,
+        master_review_path=master_review_path,
+        track_master_validated_paths=track_master_validated_paths,
+        track_master_review_paths=track_master_review_paths,
+    )
+
+    assert len(merged) == 1
+    with track_master_review_paths["abroad_danish_founders"].open("r", encoding="utf-8", newline="") as handle:
+        founder_rows = list(csv.DictReader(handle))
+    with track_master_review_paths["in_denmark"].open("r", encoding="utf-8", newline="") as handle:
+        in_denmark_rows = list(csv.DictReader(handle))
+    assert len(founder_rows) == 1
+    assert founder_rows[0]["firm_name"] == "Unity"
+    assert len(in_denmark_rows) == 0

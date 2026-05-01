@@ -11,6 +11,7 @@ from snowball_discovery import (
     build_discovery_buckets,
     build_discovery_prompt,
     build_followup_discovery_prompt,
+    call_openai_snowball_discovery_batch,
     parse_discovery_candidates,
     run_snowball_discovery,
 )
@@ -80,8 +81,9 @@ def test_prompt_contains_exclusion_names(tmp_path: Path) -> None:
 
     prompt = build_discovery_prompt(
         bucket=DiscoveryBucket(bucket_type="sector", bucket_value="biotech"),
+        origin_track="in_denmark",
         exclusion_names=build_exclusion_list(firms),
-        core_relocation_names=build_core_relocation_names(firms),
+        core_known_names=build_core_relocation_names(firms),
         prompt_template="Find additional firms.",
     )
 
@@ -112,8 +114,9 @@ def test_followup_prompt_requests_additional_firms(tmp_path: Path) -> None:
 
     prompt = build_followup_discovery_prompt(
         bucket=DiscoveryBucket(bucket_type="sector", bucket_value="biotech"),
+        origin_track="in_denmark",
         exclusion_names=build_exclusion_list(firms),
-        core_relocation_names=build_core_relocation_names(firms),
+        core_known_names=build_core_relocation_names(firms),
         prompt_template="Find additional firms.",
         already_found_names=["Allarity", "IO Biotech"],
         followup_round=2,
@@ -197,8 +200,9 @@ def test_discovery_prompt_exclusions_use_borsen_subset_for_29_04_file(tmp_path: 
     prompt_firms = select_discovery_prompt_firms(path, firms)
     prompt = build_discovery_prompt(
         bucket=DiscoveryBucket(bucket_type="sector", bucket_value="biotech"),
+        origin_track="in_denmark",
         exclusion_names=build_exclusion_list(prompt_firms),
-        core_relocation_names=build_core_relocation_names(prompt_firms),
+        core_known_names=build_core_relocation_names(prompt_firms),
         prompt_template="Find additional firms.",
     )
 
@@ -391,3 +395,68 @@ def test_run_snowball_discovery_excludes_memory_and_prior_bucket_firms(tmp_path:
 
     assert "MemoryCo" in seen_prompts[0]["known_firm_exclusions"]
     assert "BucketOneCo" in seen_prompts[1]["known_firm_exclusions"]
+
+
+def test_call_openai_snowball_discovery_batch_preserves_request_order(monkeypatch) -> None:
+    prompt_specs = [
+        {"custom_id": "first", "prompt_text": '{"x":1}'},
+        {"custom_id": "second", "prompt_text": '{"x":2}'},
+    ]
+
+    class FakeOpenAI:
+        pass
+
+    monkeypatch.setattr("snowball_discovery.load_openai_api_key", lambda: "test")
+    monkeypatch.setattr("openai.OpenAI", lambda: FakeOpenAI())
+    monkeypatch.setattr(
+        "snowball_discovery.run_responses_batch",
+        lambda client, request_items: (
+            {
+                "second": {"output_text": '{"candidates": []}'},
+                "first": {"output_text": '{"candidates": [{"firm_name":"A","origin_track":"in_denmark","discovery_bucket":"sector:biotech","sector_if_known":null,"possible_founding_location":"Copenhagen","possible_founding_year":2005,"possible_abroad_location":"Boston","possible_move_year":2010,"signal_type":"explicit_hq_move","signal_strength":"strong","short_reason":"A.","source_urls":["https://example.com"]}]}'},
+            },
+            {"id": "batch_123"},
+        ),
+    )
+
+    results = call_openai_snowball_discovery_batch(prompt_specs=prompt_specs, model="gpt-5-mini")
+
+    assert len(results) == 2
+    assert results[0][0]["candidates"][0]["firm_name"] == "A"
+    assert results[1][0]["candidates"] == []
+
+
+def test_call_openai_snowball_discovery_batch_reads_nested_message_output(monkeypatch) -> None:
+    prompt_specs = [{"custom_id": "first", "prompt_text": '{"x":1}'}]
+
+    class FakeOpenAI:
+        pass
+
+    monkeypatch.setattr("snowball_discovery.load_openai_api_key", lambda: "test")
+    monkeypatch.setattr("openai.OpenAI", lambda: FakeOpenAI())
+    monkeypatch.setattr(
+        "snowball_discovery.run_responses_batch",
+        lambda client, request_items: (
+            {
+                "first": {
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": '{"candidates": [{"firm_name":"A","origin_track":"in_denmark","discovery_bucket":"sector:biotech","sector_if_known":null,"possible_founding_location":"Copenhagen","possible_founding_year":2005,"possible_abroad_location":"Boston","possible_move_year":2010,"signal_type":"explicit_hq_move","signal_strength":"strong","short_reason":"A.","source_urls":["https://example.com"]}]}',
+                                }
+                            ],
+                        }
+                    ]
+                }
+            },
+            {"id": "batch_123"},
+        ),
+    )
+
+    results = call_openai_snowball_discovery_batch(prompt_specs=prompt_specs, model="gpt-5-mini")
+
+    assert len(results) == 1
+    assert results[0][0]["candidates"][0]["firm_name"] == "A"

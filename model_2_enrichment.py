@@ -10,7 +10,7 @@ from typing import Any
 
 from src.io import save_jsonl
 from src.normalization import normalize_company_name
-from src.openai_batch import build_batch_request_item, run_responses_batch
+from src.openai_batch import build_batch_request_item, extract_json_output_payload, run_responses_batch
 from src.openai_costs import build_cost_record, cost_log_path, sum_cost_records
 
 try:
@@ -22,22 +22,26 @@ except ImportError:
     tqdm.write = print  # type: ignore[attr-defined]
 
 DEFAULT_MODEL = "gpt-5-mini"
-PROMPT_VERSION = "2026-04-28-model2-v2"
+PROMPT_VERSION = "2026-04-30-model2-v3"
 _ALLOWED_STATUS_TODAY = {"active", "acquired", "merged", "closed", "uncertain"}
 _ALLOWED_MA_TYPES = {"acquisition", "merger", "unknown", None}
 
 SYSTEM_PROMPT = """You are performing stricter candidate-level reconciliation for a recall-first company research pipeline.
 
 Use the provided Model 1 candidate record as starting evidence, but verify and reconcile with web search.
+The input record will specify an origin_track.
 
 Rules:
 - Be conservative and source-grounded.
 - Do not fabricate dates, cities, legal names, acquirers, or countries.
 - Use null when unknown.
-- Danish founder abroad is not the same as founded in Denmark.
-- Foreign office, subsidiary, or sales office is not enough for headquarters relocation.
-- Legal redomiciling is not automatically executive headquarters relocation.
-- Acquisition-only cases should not be marked as moved_hq_abroad unless there is evidence that the firm's own headquarters or main operations moved abroad.
+- Do not confuse the two origin tracks.
+- If the evidence clearly points to the other track, set origin_track to that track instead of forcing the requested track.
+- For in_denmark, Danish founder abroad is not the same as founded in Denmark.
+- For in_denmark, foreign office, subsidiary, or sales office is not enough for headquarters relocation.
+- For in_denmark, legal redomiciling is not automatically executive headquarters relocation.
+- For in_denmark, acquisition-only cases should not be marked as moved_hq_abroad unless there is evidence that the firm's own headquarters or main operations moved abroad.
+- For abroad_danish_founders, verify whether the firm was founded outside Denmark and whether at least one founder appears Danish from real sources.
 - Prefer official company pages, registries, filings, reputable news, and archived pages.
 - Return exactly one enriched record for the input firm.
 
@@ -77,11 +81,10 @@ def load_model_1_candidates(path: Path) -> list[dict[str, Any]]:
 
 
 def build_user_prompt(candidate: dict[str, Any]) -> str:
+    origin_track = str(candidate.get("origin_track") or "in_denmark")
     payload = {
-        "task": (
-            "Reconcile this candidate into the best conservative structured interpretation of founding in Denmark, "
-            "headquarters relocation abroad, M&A context, and current status using better cross-source evidence."
-        ),
+        "origin_track": origin_track,
+        "task": _build_task_text(origin_track),
         "candidate_input": candidate,
         "output_constraints": {
             "one_record_only": True,
@@ -108,12 +111,14 @@ def enrichment_json_schema() -> dict[str, Any]:
                 "additionalProperties": False,
                 "required": [
                     "firm_name",
+                    "origin_track",
                     "first_legal_entity_name",
                     "founding_date",
                     "founding_year",
                     "founding_city",
                     "founding_country_iso",
                     "founded_in_denmark",
+                    "danish_founders_abroad",
                     "moved_hq_abroad",
                     "move_date",
                     "move_year",
@@ -130,20 +135,24 @@ def enrichment_json_schema() -> dict[str, Any]:
                     "status_today",
                     "status_today_context",
                     "sources_founding",
+                    "sources_founder_identity",
                     "sources_relocation",
                     "sources_ma",
                     "sources_status_today",
                     "confidence",
                     "uncertainty_note",
+                    "founder_danish_context",
                 ],
                 "properties": {
                     "firm_name": {"type": "string"},
+                    "origin_track": {"type": "string", "enum": ["in_denmark", "abroad_danish_founders"]},
                     "first_legal_entity_name": nullable_string,
                     "founding_date": nullable_string,
                     "founding_year": nullable_integer,
                     "founding_city": nullable_string,
                     "founding_country_iso": nullable_string,
                     "founded_in_denmark": tri,
+                    "danish_founders_abroad": tri,
                     "moved_hq_abroad": tri,
                     "move_date": nullable_string,
                     "move_year": nullable_integer,
@@ -166,11 +175,13 @@ def enrichment_json_schema() -> dict[str, Any]:
                     },
                     "status_today_context": nullable_string,
                     "sources_founding": source_array,
+                    "sources_founder_identity": source_array,
                     "sources_relocation": source_array,
                     "sources_ma": source_array,
                     "sources_status_today": source_array,
                     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "uncertainty_note": {"type": "string"},
+                    "founder_danish_context": nullable_string,
                 },
             }
         },
@@ -228,12 +239,14 @@ def parse_enriched_record(candidate: dict[str, Any], payload: dict[str, Any]) ->
     fallback_sources = list(candidate.get("sources") or [])
     return {
         "firm_name": str(record.get("firm_name") or candidate.get("firm_name") or "").strip(),
+        "origin_track": _normalize_origin_track(record.get("origin_track") or candidate.get("origin_track")),
         "first_legal_entity_name": record.get("first_legal_entity_name"),
         "founding_date": record.get("founding_date"),
         "founding_year": record.get("founding_year"),
         "founding_city": record.get("founding_city"),
         "founding_country_iso": record.get("founding_country_iso"),
         "founded_in_denmark": _tri_state(record.get("founded_in_denmark")),
+        "danish_founders_abroad": _tri_state(record.get("danish_founders_abroad")),
         "moved_hq_abroad": _tri_state(record.get("moved_hq_abroad")),
         "move_date": record.get("move_date"),
         "move_year": record.get("move_year"),
@@ -250,11 +263,13 @@ def parse_enriched_record(candidate: dict[str, Any], payload: dict[str, Any]) ->
         "status_today": _normalize_status_today(record.get("status_today")),
         "status_today_context": record.get("status_today_context"),
         "sources_founding": list(record.get("sources_founding") or fallback_sources),
+        "sources_founder_identity": list(record.get("sources_founder_identity") or fallback_sources),
         "sources_relocation": list(record.get("sources_relocation") or fallback_sources),
         "sources_ma": list(record.get("sources_ma") or fallback_sources),
         "sources_status_today": list(record.get("sources_status_today") or fallback_sources),
         "confidence": _normalize_confidence(record.get("confidence")),
         "uncertainty_note": str(record.get("uncertainty_note") or ""),
+        "founder_danish_context": record.get("founder_danish_context"),
         "prompt_version": PROMPT_VERSION,
     }
 
@@ -287,11 +302,10 @@ def run_model_2(
             )
             for index, candidate in enumerate(candidates)
         ]
-        responses_by_custom_id, batch_payload = run_responses_batch(client=client, request_items=request_items)
-        tqdm.write(f"batch_id={batch_payload.get('id')}")
+        responses_by_custom_id, _batch_payload = run_responses_batch(client=client, request_items=request_items)
         for index, candidate in enumerate(candidates):
             response_body = responses_by_custom_id[f"model2-{index}"]
-            parsed = json.loads(str(response_body.get("output_text") or ""))
+            parsed = extract_json_output_payload(response_body)
             records.append(parse_enriched_record(candidate, parsed))
             cost_records.append(
                 build_cost_record(
@@ -335,7 +349,14 @@ def reconcile_model_1_duplicates(records: list[dict[str, Any]]) -> list[dict[str
         current["source_records"] = list(current.get("source_records") or [])
         if record.get("source_record"):
             current["source_records"].append(record["source_record"])
-        for field in ("founding_evidence", "relocation_evidence", "ma_evidence", "reasoning", "confidence_note"):
+        for field in (
+            "founding_evidence",
+            "founder_danish_evidence",
+            "relocation_evidence",
+            "ma_evidence",
+            "reasoning",
+            "confidence_note",
+        ):
             current[field] = _merge_text(current.get(field), record.get(field))
         current["discovery_buckets"] = _merge_unique_strings(
             list(current.get("discovery_buckets") or []),
@@ -370,6 +391,24 @@ def _normalize_confidence(value: Any) -> str:
     if value in {"high", "medium", "low"}:
         return str(value)
     return "low"
+
+
+def _normalize_origin_track(value: Any) -> str:
+    if value == "abroad_danish_founders":
+        return "abroad_danish_founders"
+    return "in_denmark"
+
+
+def _build_task_text(origin_track: str) -> str:
+    if origin_track == "abroad_danish_founders":
+        return (
+            "Reconcile this candidate into the best conservative structured interpretation of founding abroad by Danish "
+            "founders, current status, and any secondary relocation or M&A context using better cross-source evidence."
+        )
+    return (
+        "Reconcile this candidate into the best conservative structured interpretation of founding in Denmark, "
+        "headquarters relocation abroad, M&A context, and current status using better cross-source evidence."
+    )
 
 
 def _merge_unique_strings(left: list[Any], right: list[Any]) -> list[str]:

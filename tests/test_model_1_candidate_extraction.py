@@ -41,7 +41,9 @@ def test_parse_candidate_cases_preserves_schema_and_defaults() -> None:
     assert records == [
         {
             "firm_name": "Issuu",
+            "origin_track": "in_denmark",
             "founded_in_denmark": "true",
+            "danish_founders_abroad": "uncertain",
             "founding_year": 2006,
             "founding_city": "Copenhagen",
             "founding_country_iso": "DK",
@@ -52,6 +54,7 @@ def test_parse_candidate_cases_preserves_schema_and_defaults() -> None:
             "ma_co_occurred": "false",
             "ma_type": "unknown",
             "founding_evidence": "The discovery evidence points to Copenhagen founding.",
+            "founder_danish_evidence": None,
             "relocation_evidence": "The evidence points to later US leadership and operations.",
             "ma_evidence": None,
             "reasoning": "Issuu remains plausible at recall stage.",
@@ -60,7 +63,7 @@ def test_parse_candidate_cases_preserves_schema_and_defaults() -> None:
             "discovery_bucket": "sector:SaaS/software",
             "discovery_buckets": ["sector:SaaS/software", "destination:US"],
             "source_record": source_record,
-            "prompt_version": "2026-04-28-model1-v3",
+            "prompt_version": "2026-04-30-model1-v4",
         }
     ]
 

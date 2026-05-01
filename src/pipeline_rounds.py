@@ -10,11 +10,13 @@ from typing import Any
 
 
 STOP_AFTER_CHOICES = ("discovery", "dedup", "model1", "model2", "model3", "export")
+ORIGIN_TRACK_CHOICES = ("in_denmark", "abroad_danish_founders")
 
 
 @dataclass(frozen=True)
 class RoundPaths:
     round_number: int
+    origin_track: str
     discovery: Path
     dedup: Path
     model1: Path
@@ -24,10 +26,15 @@ class RoundPaths:
     manifest: Path
 
 
-def build_round_paths(round_number: int) -> RoundPaths:
+def build_round_paths(round_number: int, origin_track: str = "in_denmark") -> RoundPaths:
+    if origin_track not in ORIGIN_TRACK_CHOICES:
+        raise ValueError(f"Unsupported origin track: {origin_track}")
     round_token = f"snowball_round_{round_number:03d}"
+    if origin_track != "in_denmark":
+        round_token = f"{round_token}_{origin_track}"
     return RoundPaths(
         round_number=round_number,
+        origin_track=origin_track,
         discovery=Path("data/discovery") / f"{round_token}.jsonl",
         dedup=Path("data/discovery") / f"{round_token}_deduped.jsonl",
         model1=Path("data/model1") / f"{round_token}_candidates.jsonl",

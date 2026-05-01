@@ -19,8 +19,9 @@ def test_build_status_rows_reports_only_round_specific_files(tmp_path: Path, mon
     monkeypatch.setattr(
         pipeline_status,
         "build_round_paths",
-        lambda round_number: RoundPaths(
+        lambda round_number, origin_track="in_denmark": RoundPaths(
             round_number=round_number,
+            origin_track=origin_track,
             discovery=discovery,
             dedup=tmp_path / "data/discovery/snowball_round_001_deduped.jsonl",
             model1=tmp_path / "data/model1/snowball_round_001_candidates.jsonl",

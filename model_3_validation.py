@@ -12,7 +12,7 @@ from export_final_review import export_final_review
 from src.founding_eligibility import has_strong_post_1998_evidence, normalize_year
 from src.io import save_jsonl
 from src.normalization import normalize_company_name
-from src.openai_batch import build_batch_request_item, run_responses_batch
+from src.openai_batch import build_batch_request_item, extract_json_output_payload, run_responses_batch
 from src.openai_costs import build_cost_record, cost_log_path, sum_cost_records
 
 try:
@@ -24,25 +24,40 @@ except ImportError:
     tqdm.write = print  # type: ignore[attr-defined]
 
 DEFAULT_MODEL = "gpt-5-mini"
-PROMPT_VERSION = "2026-04-28-model3-v2"
-DEFAULT_MASTER_VALIDATED_PATH = Path("data/cumulative/model3_validated_master.jsonl")
-DEFAULT_MASTER_REVIEW_PATH = Path("data/cumulative/final_review_master.csv")
+PROMPT_VERSION = "2026-04-30-model3-v3"
+DEFAULT_MASTER_VALIDATED_PATH = Path("data/cumulative/model3_validated_master_all_tracks.jsonl")
+DEFAULT_MASTER_REVIEW_PATH = Path("data/cumulative/final_review_master_all_tracks.csv")
+DEFAULT_TRACK_MASTER_VALIDATED_PATHS = {
+    "in_denmark": Path("data/cumulative/model3_validated_master_in_denmark.jsonl"),
+    "abroad_danish_founders": Path("data/cumulative/model3_validated_master_abroad_danish_founders.jsonl"),
+}
+DEFAULT_TRACK_MASTER_REVIEW_PATHS = {
+    "in_denmark": Path("data/cumulative/final_review_master_in_denmark.csv"),
+    "abroad_danish_founders": Path("data/cumulative/final_review_master_abroad_danish_founders.csv"),
+}
 
 SYSTEM_PROMPT = """You are performing final strict validation for a research pipeline.
 
 Question:
 Does this candidate meet the research definition?
 
+The input record will specify an origin_track.
+
 Strict rules:
 - validation_label=false if founding_year < 1999
 - validation_label=unclear if founding_year is unknown and no strong 1999-or-later evidence exists
-- validation_label=true only if founding_year >= 1999 and the relocation criteria are met
-- foreign office or subsidiary alone is not enough
-- Danish founder abroad alone is not enough
-- acquisition-only is not enough
-- regional HQ or service-center HQ is not enough unless it reflects the focal firm's main executive HQ or main operations
-- legal redomiciling is not automatically executive HQ relocation
-- true requires evidence that the firm itself was founded, based, or incorporated in Denmark and later moved its own executive HQ, main office, or main operations abroad
+- validation_label=true only if founding_year >= 1999 and the track-specific criteria are met
+- for in_denmark:
+  - foreign office or subsidiary alone is not enough
+  - Danish founder abroad alone is not enough
+  - acquisition-only is not enough
+  - regional HQ or service-center HQ is not enough unless it reflects the focal firm's main executive HQ or main operations
+  - legal redomiciling is not automatically executive HQ relocation
+  - true requires evidence that the firm itself was founded, based, or incorporated in Denmark and later moved its own executive HQ, main office, or main operations abroad
+- for abroad_danish_founders:
+  - true requires evidence that the firm was founded abroad and that at least one founder appears Danish from source-backed evidence
+  - true is not allowed if the record instead looks founded in Denmark
+  - relocation is optional context, not a requirement
 
 Return only JSON matching the requested schema."""
 
@@ -94,6 +109,7 @@ def load_validated_candidates(path: Path) -> list[dict[str, Any]]:
 
 def build_user_prompt(record: dict[str, Any]) -> str:
     payload = {
+        "origin_track": str(record.get("origin_track") or "in_denmark"),
         "task": "Apply the final conservative validation gate to this enriched candidate.",
         "candidate_input": record,
         "output_constraints": {
@@ -189,11 +205,11 @@ def parse_validation_record(record: dict[str, Any], payload: dict[str, Any]) -> 
         label = "unclear"
 
     founding_year = normalize_year(record.get("founding_year"))
+    origin_track = _normalize_origin_track(record.get("origin_track"))
     strong_post_1998_evidence = has_strong_post_1998_evidence(
         record.get("founding_evidence"),
+        record.get("founder_danish_context"),
         record.get("uncertainty_note"),
-        record.get("confidence_note"),
-        record.get("reasoning"),
         record.get("status_today_context"),
         record.get("relocation_context"),
     )
@@ -220,6 +236,32 @@ def parse_validation_record(record: dict[str, Any], payload: dict[str, Any]) -> 
             validation_reason,
             "True is not allowed when founding year is unknown.",
         )
+    elif origin_track == "abroad_danish_founders":
+        founder_link = _tri_state(record.get("danish_founders_abroad"))
+        founded_in_denmark = _tri_state(record.get("founded_in_denmark"))
+        if founded_in_denmark == "true":
+            label = "false"
+            exclusion_reason = "The record appears founded in Denmark rather than abroad."
+            validation_reason = _append_reason(
+                validation_reason,
+                "This founder-abroad track excludes firms that instead appear founded in Denmark.",
+            )
+        elif founder_link != "true":
+            label = "unclear" if founder_link == "uncertain" else "false"
+            if founder_link == "false":
+                exclusion_reason = "No sufficient source-backed Danish founder link."
+            validation_reason = _append_reason(
+                validation_reason,
+                "The founder-abroad track requires a source-backed Danish founder link.",
+            )
+    else:
+        founded_in_denmark = _tri_state(record.get("founded_in_denmark"))
+        if founded_in_denmark == "false":
+            label = "false"
+            validation_reason = _append_reason(
+                validation_reason,
+                "The Denmark-founded track requires source-backed founding in Denmark.",
+            )
 
     return {
         **record,
@@ -241,6 +283,22 @@ def _append_reason(existing: str, added: str) -> str:
     return f"{existing} {added}"
 
 
+def _normalize_origin_track(value: Any) -> str:
+    if value == "abroad_danish_founders":
+        return "abroad_danish_founders"
+    return "in_denmark"
+
+
+def _tri_state(value: Any) -> str:
+    if value in {"true", "false", "uncertain"}:
+        return str(value)
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "uncertain"
+
+
 def save_validated_records(records: list[dict[str, Any]], output_path: Path) -> None:
     save_jsonl(records, output_path)
 
@@ -249,6 +307,8 @@ def update_master_validated_dataset(
     records: list[dict[str, Any]],
     master_validated_path: Path,
     master_review_path: Path,
+    track_master_validated_paths: dict[str, Path] | None = None,
+    track_master_review_paths: dict[str, Path] | None = None,
 ) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     for existing in load_validated_candidates(master_validated_path):
@@ -262,7 +322,29 @@ def update_master_validated_dataset(
     merged_records = sorted(merged.values(), key=lambda row: str(row.get("firm_name") or "").casefold())
     save_jsonl(merged_records, master_validated_path)
     export_final_review(merged_records, master_review_path)
+    _update_track_specific_masters(
+        merged_records,
+        track_master_validated_paths=track_master_validated_paths or DEFAULT_TRACK_MASTER_VALIDATED_PATHS,
+        track_master_review_paths=track_master_review_paths or DEFAULT_TRACK_MASTER_REVIEW_PATHS,
+    )
     return merged_records
+
+
+def _update_track_specific_masters(
+    records: list[dict[str, Any]],
+    track_master_validated_paths: dict[str, Path],
+    track_master_review_paths: dict[str, Path],
+) -> None:
+    for origin_track, validated_path in track_master_validated_paths.items():
+        filtered = [
+            record
+            for record in records
+            if _normalize_origin_track(record.get("origin_track")) == origin_track
+        ]
+        save_jsonl(filtered, validated_path)
+        review_path = track_master_review_paths.get(origin_track)
+        if review_path is not None:
+            export_final_review(filtered, review_path)
 
 
 def run_model_3(
@@ -291,11 +373,10 @@ def run_model_3(
             )
             for index, record in enumerate(records_in)
         ]
-        responses_by_custom_id, batch_payload = run_responses_batch(client=client, request_items=request_items)
-        tqdm.write(f"batch_id={batch_payload.get('id')}")
+        responses_by_custom_id, _batch_payload = run_responses_batch(client=client, request_items=request_items)
         for index, record in enumerate(records_in):
             response_body = responses_by_custom_id[f"model3-{index}"]
-            parsed = json.loads(str(response_body.get("output_text") or ""))
+            parsed = extract_json_output_payload(response_body)
             records_out.append(parse_validation_record(record, parsed))
             cost_records.append(
                 build_cost_record(
@@ -325,6 +406,10 @@ def run_model_3(
     tqdm.write(f"master_validated_records={len(merged_records)}")
     tqdm.write(f"master_validated_path={master_validated_path}")
     tqdm.write(f"master_review_path={master_review_path}")
+    for origin_track, track_path in DEFAULT_TRACK_MASTER_VALIDATED_PATHS.items():
+        tqdm.write(f"track_master_validated_path[{origin_track}]={track_path}")
+    for origin_track, track_path in DEFAULT_TRACK_MASTER_REVIEW_PATHS.items():
+        tqdm.write(f"track_master_review_path[{origin_track}]={track_path}")
     return records_out
 
 

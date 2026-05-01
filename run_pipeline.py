@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from src.pipeline_rounds import (
+    ORIGIN_TRACK_CHOICES,
     STOP_AFTER_CHOICES,
     RoundPaths,
     build_round_paths,
@@ -40,12 +41,15 @@ def build_stage_specs(
     round_number: int,
     known_path: Path,
     model_name: str,
+    origin_track: str = "in_denmark",
     max_buckets: int | None = None,
     limit: int | None = None,
     followup_discovery_rounds: int = 3,
     batch_llm_stages: bool = False,
+    batch_discovery: bool = False,
+    skip_processed_buckets: bool = False,
 ) -> list[StageSpec]:
-    paths = build_round_paths(round_number)
+    paths = build_round_paths(round_number, origin_track=origin_track)
     return [
         StageSpec(
             slug="discovery",
@@ -58,8 +62,11 @@ def build_stage_specs(
                 known_path,
                 paths,
                 model_name,
+                origin_track,
                 max_buckets,
                 followup_discovery_rounds,
+                batch_discovery,
+                skip_processed_buckets,
             ),
         ),
         StageSpec(
@@ -146,6 +153,7 @@ def run_pipeline(
     round_number: int,
     known_path: Path,
     model_name: str,
+    origin_track: str = "in_denmark",
     max_buckets: int | None = None,
     skip_existing: bool = False,
     stop_after: str | None = None,
@@ -153,21 +161,29 @@ def run_pipeline(
     limit: int | None = None,
     followup_discovery_rounds: int = 3,
     batch_llm_stages: bool = False,
+    batch_discovery: bool = False,
+    skip_processed_buckets: bool = False,
 ) -> dict[str, Any]:
-    paths = build_round_paths(round_number)
-    stages = build_stage_specs(
-        round_number=round_number,
-        known_path=known_path,
-        model_name=model_name,
-        max_buckets=max_buckets,
-        limit=limit,
-        followup_discovery_rounds=followup_discovery_rounds,
-        batch_llm_stages=batch_llm_stages,
-    )
+    paths = build_round_paths(round_number, origin_track=origin_track)
+    stage_spec_kwargs = {
+        "round_number": round_number,
+        "known_path": known_path,
+        "model_name": model_name,
+        "origin_track": origin_track,
+        "max_buckets": max_buckets,
+        "limit": limit,
+        "followup_discovery_rounds": followup_discovery_rounds,
+        "batch_llm_stages": batch_llm_stages,
+        "batch_discovery": batch_discovery,
+    }
+    if skip_processed_buckets:
+        stage_spec_kwargs["skip_processed_buckets"] = True
+    stages = build_stage_specs(**stage_spec_kwargs)
     manifest = _build_manifest(
         round_number=round_number,
         known_path=known_path,
         model_name=model_name,
+        origin_track=origin_track,
         dry_run=dry_run,
         skip_existing=skip_existing,
         stop_after=stop_after,
@@ -175,6 +191,8 @@ def run_pipeline(
         limit=limit,
         followup_discovery_rounds=followup_discovery_rounds,
         batch_llm_stages=batch_llm_stages,
+        batch_discovery=batch_discovery,
+        skip_processed_buckets=skip_processed_buckets,
         manifest_path=paths.manifest,
     )
 
@@ -217,6 +235,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--round", required=True, type=int, dest="round_number", help="Pipeline round number.")
     parser.add_argument("--known", required=True, type=Path, help="Known seed CSV path.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="OpenAI model name for LLM stages.")
+    parser.add_argument(
+        "--origin-track",
+        choices=ORIGIN_TRACK_CHOICES,
+        default="in_denmark",
+        help="Origin track to run through the pipeline.",
+    )
     parser.add_argument("--max-buckets", type=int, default=None, help="Optional bucket cap for snowball discovery.")
     parser.add_argument("--skip-existing", action="store_true", help="Skip stages whose expected output already exists.")
     parser.add_argument("--dry-run", action="store_true", help="Print commands, inputs, and outputs without executing.")
@@ -225,6 +249,21 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--batch-llm-stages",
         action="store_true",
         help="Submit Model 1, Model 2, and Model 3 requests through the OpenAI Batch API.",
+    )
+    parser.add_argument(
+        "--batch-discovery",
+        action="store_true",
+        help="Submit discovery requests through the OpenAI Batch API, batching each pass across buckets.",
+    )
+    parser.add_argument(
+        "--batch-all-api",
+        action="store_true",
+        help="Submit discovery and Model 1-3 requests through the OpenAI Batch API.",
+    )
+    parser.add_argument(
+        "--skip-processed-buckets",
+        action="store_true",
+        help="Skip discovery buckets already present in prior *_bucket_runs.jsonl files for this origin track.",
     )
     parser.add_argument(
         "--followup-discovery-rounds",
@@ -295,6 +334,7 @@ def _build_manifest(
     round_number: int,
     known_path: Path,
     model_name: str,
+    origin_track: str,
     dry_run: bool,
     skip_existing: bool,
     stop_after: str | None,
@@ -302,12 +342,15 @@ def _build_manifest(
     limit: int | None,
     followup_discovery_rounds: int,
     batch_llm_stages: bool,
+    batch_discovery: bool,
+    skip_processed_buckets: bool,
     manifest_path: Path,
 ) -> dict[str, Any]:
     return {
         "timestamp": _timestamp_now(),
         "round_number": round_number,
         "model": model_name,
+        "origin_track": origin_track,
         "known_file": str(known_path),
         "dry_run": dry_run,
         "skip_existing": skip_existing,
@@ -316,6 +359,8 @@ def _build_manifest(
         "limit": limit,
         "followup_discovery_rounds": followup_discovery_rounds,
         "batch_llm_stages": batch_llm_stages,
+        "batch_discovery": batch_discovery,
+        "skip_processed_buckets": skip_processed_buckets,
         "commands_run": [],
         "output_paths": {},
         "row_counts": {},
@@ -335,8 +380,11 @@ def _build_discovery_command(
     known_path: Path,
     paths: RoundPaths,
     model_name: str,
+    origin_track: str,
     max_buckets: int | None,
     followup_discovery_rounds: int,
+    batch_discovery: bool,
+    skip_processed_buckets: bool,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -349,10 +397,16 @@ def _build_discovery_command(
         str(round_number),
         "--model",
         model_name,
+        "--origin-track",
+        origin_track,
     ]
     if max_buckets is not None:
         command.extend(["--max-buckets", str(max_buckets)])
     command.extend(["--followup-rounds", str(max(0, followup_discovery_rounds))])
+    if batch_discovery:
+        command.append("--batch")
+    if skip_processed_buckets:
+        command.append("--skip-processed-buckets")
     return command
 
 
@@ -430,18 +484,23 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
 def main() -> None:
     parser = build_argument_parser()
     args = parser.parse_args()
+    batch_llm_stages = args.batch_llm_stages or args.batch_all_api
+    batch_discovery = args.batch_discovery or args.batch_all_api
     try:
         manifest = run_pipeline(
             round_number=args.round_number,
             known_path=args.known,
             model_name=args.model,
+            origin_track=args.origin_track,
             max_buckets=args.max_buckets,
             skip_existing=args.skip_existing,
             stop_after=args.stop_after,
             dry_run=args.dry_run,
             limit=args.limit,
             followup_discovery_rounds=max(0, args.followup_discovery_rounds),
-            batch_llm_stages=args.batch_llm_stages,
+            batch_llm_stages=batch_llm_stages,
+            batch_discovery=batch_discovery,
+            skip_processed_buckets=args.skip_processed_buckets,
         )
         if not args.dry_run:
             print(f"manifest_path={manifest['manifest_path']}")

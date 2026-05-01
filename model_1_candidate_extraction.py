@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from src.founding_eligibility import is_post_1998_eligible_or_supported
-from src.openai_batch import build_batch_request_item, run_responses_batch
+from src.openai_batch import build_batch_request_item, extract_json_output_payload, run_responses_batch
 from src.io import save_jsonl
 from src.openai_costs import build_cost_record, cost_log_path, sum_cost_records
 
@@ -22,12 +22,15 @@ except ImportError:
     tqdm.write = print  # type: ignore[attr-defined]
 
 DEFAULT_MODEL = "gpt-5-mini"
-PROMPT_VERSION = "2026-04-28-model1-v3"
+PROMPT_VERSION = "2026-04-30-model1-v4"
 
 SYSTEM_PROMPT = """You are performing recall-first candidate extraction from snowball discovery evidence.
 
-Question:
-Could this plausibly be a Danish-founded firm that later moved its own HQ, main office, or main operations abroad?
+The input record will specify an origin_track.
+
+Questions by origin_track:
+- in_denmark: Could this plausibly be a Danish-founded firm that later moved its own HQ, main office, or main operations abroad?
+- abroad_danish_founders: Could this plausibly be a firm founded abroad by Danish founders?
 
 Rules:
 - allow uncertain but plausible candidates
@@ -35,9 +38,12 @@ Rules:
 - if founding_year is known and less than 1999, do not output the candidate
 - if founding_year is unknown, allow uncertain candidates only when other evidence strongly suggests a 1999-or-later startup or young firm
 - do not fabricate years, cities, or countries
-- Danish founder abroad is not the same as founded in Denmark
-- foreign office openings alone are not enough
-- acquisition-only cases are not enough unless the focal firm appears to continue with its own HQ or main operations abroad
+- do not confuse the two origin tracks
+- prioritize the requested origin track, but if the record clearly fits the other track better, set origin_track accordingly instead of forcing fit
+- for in_denmark, Danish founder abroad is not the same as founded in Denmark
+- for in_denmark, foreign office openings alone are not enough
+- for in_denmark, acquisition-only cases are not enough unless the focal firm appears to continue with its own HQ or main operations abroad
+- for abroad_danish_founders, require a plausible source-backed Danish founder link plus plausible founding or early operations outside Denmark
 - return one row for the focal firm candidate described in the input record
 - return empty candidates if no plausible focal firm remains
 
@@ -77,11 +83,10 @@ def load_discovery_candidates(path: Path) -> list[dict[str, Any]]:
 
 
 def build_user_prompt(candidate: dict[str, Any]) -> str:
+    origin_track = str(candidate.get("origin_track") or "in_denmark")
     payload = {
-        "task": (
-            "Convert this deduplicated snowball discovery record into a recall-first structured candidate "
-            "assessment for possible founding in Denmark and possible HQ or main-operations relocation abroad."
-        ),
+        "origin_track": origin_track,
+        "task": _build_task_text(origin_track),
         "snowball_candidate": candidate,
         "output_constraints": {
             "one_row_per_focal_firm": True,
@@ -110,7 +115,9 @@ def candidate_json_schema() -> dict[str, Any]:
                     "additionalProperties": False,
                     "required": [
                         "firm_name",
+                        "origin_track",
                         "founded_in_denmark",
+                        "danish_founders_abroad",
                         "founding_year",
                         "founding_city",
                         "founding_country_iso",
@@ -121,6 +128,7 @@ def candidate_json_schema() -> dict[str, Any]:
                         "ma_co_occurred",
                         "ma_type",
                         "founding_evidence",
+                        "founder_danish_evidence",
                         "relocation_evidence",
                         "ma_evidence",
                         "reasoning",
@@ -129,7 +137,9 @@ def candidate_json_schema() -> dict[str, Any]:
                     ],
                     "properties": {
                         "firm_name": {"type": "string"},
+                        "origin_track": {"type": "string", "enum": ["in_denmark", "abroad_danish_founders"]},
                         "founded_in_denmark": tri,
+                        "danish_founders_abroad": tri,
                         "founding_year": nullable_integer,
                         "founding_city": nullable_string,
                         "founding_country_iso": nullable_string,
@@ -143,6 +153,7 @@ def candidate_json_schema() -> dict[str, Any]:
                             "enum": ["acquisition", "merger", "unknown", None],
                         },
                         "founding_evidence": nullable_string,
+                        "founder_danish_evidence": nullable_string,
                         "relocation_evidence": nullable_string,
                         "ma_evidence": nullable_string,
                         "reasoning": {"type": "string"},
@@ -207,7 +218,9 @@ def parse_candidate_cases(record: dict[str, Any], payload: dict[str, Any]) -> li
         founding_year = row.get("founding_year")
         parsed_case = {
             "firm_name": str(row.get("firm_name") or record.get("firm_name") or "").strip(),
+            "origin_track": _normalize_origin_track(row.get("origin_track") or record.get("origin_track")),
             "founded_in_denmark": _tri_state(row.get("founded_in_denmark")),
+            "danish_founders_abroad": _tri_state(row.get("danish_founders_abroad")),
             "founding_year": founding_year,
             "founding_city": row.get("founding_city"),
             "founding_country_iso": row.get("founding_country_iso"),
@@ -218,6 +231,7 @@ def parse_candidate_cases(record: dict[str, Any], payload: dict[str, Any]) -> li
             "ma_co_occurred": _tri_state(row.get("ma_co_occurred")),
             "ma_type": row.get("ma_type"),
             "founding_evidence": row.get("founding_evidence"),
+            "founder_danish_evidence": row.get("founder_danish_evidence"),
             "relocation_evidence": row.get("relocation_evidence"),
             "ma_evidence": row.get("ma_evidence"),
             "reasoning": str(row.get("reasoning") or ""),
@@ -273,12 +287,11 @@ def run_model_1(
             )
             for index, record in enumerate(records_in)
         ]
-        responses_by_custom_id, batch_payload = run_responses_batch(client=client, request_items=request_items)
-        tqdm.write(f"batch_id={batch_payload.get('id')}")
+        responses_by_custom_id, _batch_payload = run_responses_batch(client=client, request_items=request_items)
         for index, record in enumerate(records_in):
             custom_id = f"model1-{index}"
             response_body = responses_by_custom_id[custom_id]
-            parsed = json.loads(str(response_body.get("output_text") or ""))
+            parsed = extract_json_output_payload(response_body)
             records_out.extend(parse_candidate_cases(record, parsed))
             cost_records.append(
                 build_cost_record(
@@ -311,6 +324,24 @@ def _tri_state(value: Any) -> str:
     if value is False:
         return "false"
     return "uncertain"
+
+
+def _normalize_origin_track(value: Any) -> str:
+    if value == "abroad_danish_founders":
+        return "abroad_danish_founders"
+    return "in_denmark"
+
+
+def _build_task_text(origin_track: str) -> str:
+    if origin_track == "abroad_danish_founders":
+        return (
+            "Convert this deduplicated snowball discovery record into a recall-first structured candidate "
+            "assessment for possible founding abroad by Danish founders."
+        )
+    return (
+        "Convert this deduplicated snowball discovery record into a recall-first structured candidate "
+        "assessment for possible founding in Denmark and possible HQ or main-operations relocation abroad."
+    )
 
 
 def main() -> None:
