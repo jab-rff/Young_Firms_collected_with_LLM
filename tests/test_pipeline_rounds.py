@@ -41,3 +41,10 @@ def test_count_rows_counts_csv_rows_without_header(tmp_path: Path) -> None:
         writer.writerow(["Zendesk", "true"])
 
     assert count_rows(path) == 2
+
+
+def test_count_rows_counts_csv_rows_with_embedded_nuls(tmp_path: Path) -> None:
+    path = tmp_path / "records_with_nuls.csv"
+    path.write_text("firm_name,validation_label\nIssuu,true\nZendesk,tr\x00ue\n", encoding="utf-8")
+
+    assert count_rows(path) == 2

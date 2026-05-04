@@ -101,10 +101,16 @@ def test_build_discovery_buckets_includes_new_bucket_families() -> None:
     buckets = build_discovery_buckets()
 
     bucket_ids = {bucket.bucket_id for bucket in buckets}
-    assert f"mechanism:{MECHANISM_BUCKETS[0]}" in bucket_ids
-    assert f"source_style:{SOURCE_STYLE_BUCKETS[0]}" in bucket_ids
+    assert not MECHANISM_BUCKETS
+    assert not SOURCE_STYLE_BUCKETS
     assert f"city_pair:{CITY_PAIR_BUCKETS[0]}" in bucket_ids
-    assert f"cross_bucket:{CROSS_BUCKETS[0]}" in bucket_ids
+    assert "city_pair:Copenhagen to abroad" in bucket_ids
+    assert "city_pair:Aarhus to abroad" in bucket_ids
+    assert "city_pair:Denmark to London" in bucket_ids
+    assert "cross_bucket:sector=SaaS/software | destination=Germany" in bucket_ids
+    assert "cross_bucket:sector=biotech | destination=US" in bucket_ids
+    assert "cross_bucket:sector=fintech | destination=UK" in bucket_ids
+    assert len(CROSS_BUCKETS) == 15
 
 
 def test_followup_prompt_requests_additional_firms(tmp_path: Path) -> None:

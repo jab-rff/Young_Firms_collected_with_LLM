@@ -22,7 +22,7 @@ except ImportError:
     tqdm.write = print  # type: ignore[attr-defined]
 
 DEFAULT_MODEL = "gpt-5-mini"
-PROMPT_VERSION = "2026-04-30-model2-v3"
+PROMPT_VERSION = "2026-05-04-model2-v4"
 _ALLOWED_STATUS_TODAY = {"active", "acquired", "merged", "closed", "uncertain"}
 _ALLOWED_MA_TYPES = {"acquisition", "merger", "unknown", None}
 
@@ -34,6 +34,7 @@ The input record will specify an origin_track.
 Rules:
 - Be conservative and source-grounded.
 - Do not fabricate dates, cities, legal names, acquirers, or countries.
+- Do not fabricate CVR numbers or foreign legal-entity names.
 - Use null when unknown.
 - Do not confuse the two origin tracks.
 - If the evidence clearly points to the other track, set origin_track to that track instead of forcing the requested track.
@@ -44,6 +45,8 @@ Rules:
 - For abroad_danish_founders, verify whether the firm was founded outside Denmark and whether at least one founder appears Danish from real sources.
 - Prefer official company pages, registries, filings, reputable news, and archived pages.
 - Return exactly one enriched record for the input firm.
+- Capture the earliest known Danish legal entity name and CVR when available.
+- If the firm clearly moved into a foreign legal entity structure, capture the first legal name of that moved-to entity when available.
 
 Return only JSON matching the requested schema."""
 
@@ -113,6 +116,7 @@ def enrichment_json_schema() -> dict[str, Any]:
                     "firm_name",
                     "origin_track",
                     "first_legal_entity_name",
+                    "first_cvr",
                     "founding_date",
                     "founding_year",
                     "founding_city",
@@ -124,6 +128,7 @@ def enrichment_json_schema() -> dict[str, Any]:
                     "move_year",
                     "moved_to_city",
                     "moved_to_country_iso",
+                    "moved_to_first_legal_entity_name",
                     "relocation_context",
                     "ma_after_or_during_move",
                     "ma_type",
@@ -147,6 +152,7 @@ def enrichment_json_schema() -> dict[str, Any]:
                     "firm_name": {"type": "string"},
                     "origin_track": {"type": "string", "enum": ["in_denmark", "abroad_danish_founders"]},
                     "first_legal_entity_name": nullable_string,
+                    "first_cvr": nullable_string,
                     "founding_date": nullable_string,
                     "founding_year": nullable_integer,
                     "founding_city": nullable_string,
@@ -158,6 +164,7 @@ def enrichment_json_schema() -> dict[str, Any]:
                     "move_year": nullable_integer,
                     "moved_to_city": nullable_string,
                     "moved_to_country_iso": nullable_string,
+                    "moved_to_first_legal_entity_name": nullable_string,
                     "relocation_context": nullable_string,
                     "ma_after_or_during_move": tri,
                     "ma_type": {
@@ -241,6 +248,7 @@ def parse_enriched_record(candidate: dict[str, Any], payload: dict[str, Any]) ->
         "firm_name": str(record.get("firm_name") or candidate.get("firm_name") or "").strip(),
         "origin_track": _normalize_origin_track(record.get("origin_track") or candidate.get("origin_track")),
         "first_legal_entity_name": record.get("first_legal_entity_name"),
+        "first_cvr": record.get("first_cvr"),
         "founding_date": record.get("founding_date"),
         "founding_year": record.get("founding_year"),
         "founding_city": record.get("founding_city"),
@@ -252,6 +260,7 @@ def parse_enriched_record(candidate: dict[str, Any], payload: dict[str, Any]) ->
         "move_year": record.get("move_year"),
         "moved_to_city": record.get("moved_to_city"),
         "moved_to_country_iso": record.get("moved_to_country_iso"),
+        "moved_to_first_legal_entity_name": record.get("moved_to_first_legal_entity_name"),
         "relocation_context": record.get("relocation_context"),
         "ma_after_or_during_move": _tri_state(record.get("ma_after_or_during_move")),
         "ma_type": _normalize_ma_type(record.get("ma_type")),

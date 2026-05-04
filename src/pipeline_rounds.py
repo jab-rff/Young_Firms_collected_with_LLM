@@ -76,10 +76,22 @@ def _count_jsonl_rows(path: Path) -> int:
 
 
 def _count_csv_rows(path: Path) -> int:
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.reader(handle)
-        try:
-            next(reader)
-        except StopIteration:
-            return 0
-        return sum(1 for row in reader if any(cell.strip() for cell in row))
+    try:
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.reader(handle)
+            try:
+                next(reader)
+            except StopIteration:
+                return 0
+            return sum(1 for row in reader if any(cell.strip() for cell in row))
+    except csv.Error as exc:
+        if "NUL" not in str(exc):
+            raise
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            sanitized_lines = (line.replace("\x00", "") for line in handle)
+            reader = csv.reader(sanitized_lines)
+            try:
+                next(reader)
+            except StopIteration:
+                return 0
+            return sum(1 for row in reader if any(cell.strip() for cell in row))

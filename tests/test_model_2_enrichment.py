@@ -75,6 +75,7 @@ def test_parse_enriched_record_preserves_schema_and_prompt_version(model1_candid
         "record": {
             "firm_name": "Zendesk",
             "first_legal_entity_name": "Zendesk ApS",
+            "first_cvr": "30547797",
             "founding_date": None,
             "founding_year": 2007,
             "founding_city": "Copenhagen",
@@ -85,6 +86,7 @@ def test_parse_enriched_record_preserves_schema_and_prompt_version(model1_candid
             "move_year": None,
             "moved_to_city": "San Francisco",
             "moved_to_country_iso": "US",
+            "moved_to_first_legal_entity_name": "Zendesk, Inc.",
             "relocation_context": "The company later operated from San Francisco.",
             "ma_after_or_during_move": "false",
             "ma_type": "unknown",
@@ -109,15 +111,17 @@ def test_parse_enriched_record_preserves_schema_and_prompt_version(model1_candid
     assert record["firm_name"] == "Zendesk"
     assert record["origin_track"] == "in_denmark"
     assert record["first_legal_entity_name"] == "Zendesk ApS"
+    assert record["first_cvr"] == "30547797"
     assert record["founding_year"] == 2007
     assert record["founded_in_denmark"] == "true"
     assert record["danish_founders_abroad"] == "uncertain"
     assert record["moved_hq_abroad"] == "true"
+    assert record["moved_to_first_legal_entity_name"] == "Zendesk, Inc."
     assert record["status_today"] == "active"
     assert record["sources_founding"] == ["https://example.com/zendesk/founding"]
     assert record["sources_founder_identity"] == ["https://example.com/zendesk"]
     assert record["sources_relocation"] == ["https://example.com/zendesk/hq"]
-    assert record["prompt_version"] == "2026-04-30-model2-v3"
+    assert record["prompt_version"] == "2026-05-04-model2-v4"
 
 
 def test_parse_enriched_record_keeps_nulls_and_fallback_sources(model1_candidates: list[dict[str, object]]) -> None:
@@ -126,6 +130,7 @@ def test_parse_enriched_record_keeps_nulls_and_fallback_sources(model1_candidate
         "record": {
             "firm_name": "Just Eat",
             "first_legal_entity_name": None,
+            "first_cvr": None,
             "founding_date": None,
             "founding_year": None,
             "founding_city": None,
@@ -136,6 +141,7 @@ def test_parse_enriched_record_keeps_nulls_and_fallback_sources(model1_candidate
             "move_year": None,
             "moved_to_city": None,
             "moved_to_country_iso": None,
+            "moved_to_first_legal_entity_name": None,
             "relocation_context": None,
             "ma_after_or_during_move": "true",
             "ma_type": None,
@@ -158,8 +164,10 @@ def test_parse_enriched_record_keeps_nulls_and_fallback_sources(model1_candidate
     record = parse_enriched_record(candidate, payload)
 
     assert record["first_legal_entity_name"] is None
+    assert record["first_cvr"] is None
     assert record["founding_date"] is None
     assert record["move_date"] is None
+    assert record["moved_to_first_legal_entity_name"] is None
     assert record["sources_founding"] == ["https://example.com/just-eat"]
     assert record["sources_relocation"] == ["https://example.com/just-eat"]
     assert record["sources_ma"] == ["https://example.com/just-eat"]
@@ -173,6 +181,7 @@ def test_parse_enriched_record_normalizes_status_today_and_ma_type(model1_candid
         "record": {
             "firm_name": "Endomondo",
             "first_legal_entity_name": None,
+            "first_cvr": None,
             "founding_date": None,
             "founding_year": None,
             "founding_city": "Copenhagen",
@@ -183,6 +192,7 @@ def test_parse_enriched_record_normalizes_status_today_and_ma_type(model1_candid
             "move_year": None,
             "moved_to_city": None,
             "moved_to_country_iso": None,
+            "moved_to_first_legal_entity_name": None,
             "relocation_context": None,
             "ma_after_or_during_move": "true",
             "ma_type": "takeover",
@@ -217,6 +227,7 @@ def test_save_enriched_records_writes_jsonl_with_nulls(tmp_path: Path) -> None:
         {
             "firm_name": "Zendesk",
             "first_legal_entity_name": None,
+            "first_cvr": None,
             "founding_date": None,
             "founding_year": 2007,
             "founding_city": "Copenhagen",
@@ -227,6 +238,7 @@ def test_save_enriched_records_writes_jsonl_with_nulls(tmp_path: Path) -> None:
             "move_year": None,
             "moved_to_city": "San Francisco",
             "moved_to_country_iso": "US",
+            "moved_to_first_legal_entity_name": "Zendesk, Inc.",
             "relocation_context": None,
             "ma_after_or_during_move": "false",
             "ma_type": "unknown",

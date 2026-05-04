@@ -87,46 +87,38 @@ DESTINATION_BUCKETS = [
     "South Africa",
 ]
 
-MECHANISM_BUCKETS = [
-    "IPO or listing-related relocation",
-    "Delaware parent or UK parent after Danish founding",
-    "principal executive offices moved abroad",
-    "group headquarters moved abroad",
-    "executive team or leadership moved abroad",
-    "acquisition-linked relocation where the operating company continued",
-    "founder relocation narrative after Denmark founding",
-    "stealth or scaleup expansion that became a foreign HQ move",
-]
+MECHANISM_BUCKETS: list[str] = []
 
-SOURCE_STYLE_BUCKETS = [
-    "Danish business media",
-    "foreign media covering Danish-founded firms",
-    "investor filings and annual reports",
-    "company about pages and archived timeline pages",
-]
+SOURCE_STYLE_BUCKETS: list[str] = []
 
 CITY_PAIR_BUCKETS = [
-    "Copenhagen to London",
-    "Copenhagen to New York",
-    "Copenhagen to San Francisco",
-    "Aarhus to London",
-    "Aarhus to New York",
-    "Denmark to Cambridge MA",
+    "Copenhagen to abroad",
+    "Aarhus to abroad",
+    "Denmark to London",
+    "Denmark to New York City",
+    "Denmark to Boston",
+    "Denmark to San Francisco",
+    "Denmark to Los Angeles",
+    "Denmark to Paris",
+    "Denmark to Berlin",
 ]
 
 CROSS_BUCKETS = [
-    "sector=biotech | destination=US",
-    "sector=SaaS/software | destination=US",
+    "sector=SaaS/software | destination=Germany",
+    "sector=SaaS/software | destination=Sweden",
+    "sector=SaaS/software | destination=Switzerland",
     "sector=SaaS/software | destination=UK",
+    "sector=SaaS/software | destination=US",
+    "sector=biotech | destination=Germany",
+    "sector=biotech | destination=Sweden",
+    "sector=biotech | destination=Switzerland",
+    "sector=biotech | destination=UK",
+    "sector=biotech | destination=US",
+    "sector=fintech | destination=Germany",
+    "sector=fintech | destination=Sweden",
+    "sector=fintech | destination=Switzerland",
     "sector=fintech | destination=UK",
-    "sector=medtech | destination=US",
-    "sector=gaming | destination=US",
-    "sector=design | destination=UK",
-    "sector=retail/consumer | destination=Germany",
-    "sector=biotech | mechanism=IPO or listing-related relocation",
-    "sector=biotech | mechanism=Delaware parent or UK parent after Danish founding",
-    "destination=US | mechanism=principal executive offices moved abroad",
-    "destination=UK | mechanism=group headquarters moved abroad",
+    "sector=fintech | destination=US",
 ]
 
 SYSTEM_PROMPT = """You are a recall-first snowball discovery assistant for a company research pipeline.
