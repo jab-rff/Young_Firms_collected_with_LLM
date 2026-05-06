@@ -84,7 +84,8 @@ FINAL_COLUMNS = [
     "deal_value_th_usd",
     "deal_date",
     "method",
-    "Column1",
+    "manual_reviewed",
+    "human_validation",
 ]
 
 REASONING_COLUMNS = [
@@ -113,6 +114,16 @@ EDITABLE_COLUMNS = [
 DEFAULT_VALIDATED_MASTER_PATH = Path("data/cumulative/model3_validated_master_all_tracks.jsonl")
 DEFAULT_MANUAL_REVIEW_PATH = Path("data/manual_review/close_reading_cases.csv")
 DEFAULT_FINAL_DATASET_PATH = Path("data/manual_review/final_dataset.csv")
+
+HUMAN_VALIDATION_COLUMN = "human_validation"
+MANUAL_REVIEWED_COLUMN = "manual_reviewed"
+HUMAN_VALIDATION_OPTIONS = [
+    "true",
+    "false",
+    "unclear",
+    "duplicate",
+    "founded w Børsen",
+]
 
 ISO3_TO_ISO2 = {
     "ARG": "AR",
@@ -197,9 +208,10 @@ def load_existing_manual_rows(path: Path) -> dict[str, dict[str, str]]:
         reader = csv.DictReader(_sanitized_csv_lines(handle))
         rows: dict[str, dict[str, str]] = {}
         for row in reader:
+            normalized_row = _normalize_legacy_manual_row(row)
             key = _row_key(row.get("firm") or row.get("name") or row.get("name_today"))
             if key:
-                rows[key] = {str(k): str(v or "") for k, v in row.items()}
+                rows[key] = normalized_row
         return rows
 
 
@@ -356,7 +368,8 @@ def build_manual_close_reading_row(
         "deal_value_th_usd": _safe_text(record.get("deal_value_th_usd") or record.get("deal_value_usd_thousands")) if has_deal_evidence else "",
         "deal_date": _safe_text(record.get("acq_date")) if has_deal_evidence else "",
         "method": "LLM pipeline",
-        "Column1": "unclear",
+        MANUAL_REVIEWED_COLUMN: "false",
+        HUMAN_VALIDATION_COLUMN: "unclear",
         "origin_track": str(record.get("origin_track") or "").strip(),
         "validation_label": str(record.get("validation_label") or "").strip(),
         "confidence": str(record.get("confidence") or "").strip(),
@@ -413,14 +426,17 @@ def write_csv(rows: list[dict[str, Any]], fieldnames: list[str], path: Path) -> 
 def sanitize_manual_rows(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     sanitized: list[dict[str, str]] = []
     for row in rows:
-        clean_row = {column: _safe_text(row.get(column)) for column in FINAL_COLUMNS}
+        normalized_row = _normalize_legacy_manual_row(row)
+        clean_row = {column: _safe_text(normalized_row.get(column)) for column in FINAL_COLUMNS}
         for column in ("real_move_to_country", "location_today_country", "acq_iso"):
             clean_row[column] = normalize_country_iso2(clean_row.get(column))
-        human_validation = clean_row.get("Column1", "").strip().lower()
-        if human_validation not in {"true", "false", "unclear"}:
-            clean_row["Column1"] = "unclear"
+        human_validation = clean_row.get(HUMAN_VALIDATION_COLUMN, "").strip().lower()
+        if human_validation not in {option.lower() for option in HUMAN_VALIDATION_OPTIONS}:
+            clean_row[HUMAN_VALIDATION_COLUMN] = "unclear"
         else:
-            clean_row["Column1"] = human_validation
+            clean_row[HUMAN_VALIDATION_COLUMN] = _normalize_human_validation_label(human_validation)
+        manual_reviewed = clean_row.get(MANUAL_REVIEWED_COLUMN, "").strip().lower()
+        clean_row[MANUAL_REVIEWED_COLUMN] = "true" if manual_reviewed == "true" else "false"
         sanitized.append(clean_row)
     return sanitized
 
@@ -598,3 +614,22 @@ def _sanitized_csv_lines(handle: Any) -> Any:
 def _has_non_danish_foreign_hq_signal(hq_today_country: str, moved_to_country: str) -> bool:
     disallowed = {"", "DK"}
     return hq_today_country not in disallowed or moved_to_country not in disallowed
+
+
+def _normalize_human_validation_label(value: Any) -> str:
+    text = _safe_text(value).strip().lower()
+    for option in HUMAN_VALIDATION_OPTIONS:
+        if text == option.lower():
+            return option
+    return "unclear"
+
+
+def _normalize_legacy_manual_row(row: dict[str, Any]) -> dict[str, str]:
+    normalized = {str(k): _safe_text(v) for k, v in row.items()}
+    legacy_human_validation = normalized.get("Column1", "")
+    if HUMAN_VALIDATION_COLUMN not in normalized:
+        normalized[HUMAN_VALIDATION_COLUMN] = legacy_human_validation
+    normalized.pop("Column1", None)
+    if MANUAL_REVIEWED_COLUMN not in normalized:
+        normalized[MANUAL_REVIEWED_COLUMN] = "false"
+    return normalized

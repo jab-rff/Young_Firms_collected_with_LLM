@@ -1,4 +1,7 @@
 from src.manual_close_reading import (
+    HUMAN_VALIDATION_COLUMN,
+    HUMAN_VALIDATION_OPTIONS,
+    MANUAL_REVIEWED_COLUMN,
     build_manual_close_reading_rows,
     build_manual_close_reading_row,
     find_invalid_iso2_rows,
@@ -48,7 +51,8 @@ def test_build_manual_close_reading_row_maps_core_fields() -> None:
     assert row["link"] == ""
     assert row["deal_year"] == "2020"
     assert row["deal_source"] == ""
-    assert row["Column1"] == "unclear"
+    assert row[HUMAN_VALIDATION_COLUMN] == "unclear"
+    assert row[MANUAL_REVIEWED_COLUMN] == "false"
 
 
 def test_build_manual_close_reading_row_blanks_today_hq_when_same_as_latest() -> None:
@@ -183,7 +187,8 @@ def test_sanitize_manual_rows_normalizes_country_columns() -> None:
     assert rows[0]["real_move_to_country"] == "GB"
     assert rows[0]["location_today_country"] == "DK"
     assert rows[0]["acq_iso"] == "US"
-    assert rows[0]["Column1"] == "unclear"
+    assert rows[0][HUMAN_VALIDATION_COLUMN] == "unclear"
+    assert rows[0][MANUAL_REVIEWED_COLUMN] == "false"
 
 
 def test_find_invalid_iso2_rows_reports_non_iso2_values() -> None:
@@ -198,6 +203,8 @@ def test_find_invalid_iso2_rows_reports_non_iso2_values() -> None:
         ]
     )
     assert invalid == [("BadCo", "real_move_to_country", "DNKX")]
+
+
 def test_build_manual_close_reading_rows_filters_to_non_danish_hq_signal() -> None:
     rows = build_manual_close_reading_rows(
         [
@@ -263,3 +270,42 @@ def test_build_manual_close_reading_row_blanks_deal_fields_without_deal_evidence
     assert row["acquiror_real_name"] == ""
     assert row["deal_year"] == ""
     assert row["deal_source"] == ""
+
+
+def test_sanitize_manual_rows_maps_legacy_column1_to_human_validation() -> None:
+    rows = sanitize_manual_rows(
+        [
+            {
+                "firm": "LegacyCo",
+                "real_move_to_country": "GBR",
+                "location_today_country": "DNK",
+                "acq_iso": "",
+                "Column1": "TRUE",
+            }
+        ]
+    )
+
+    assert rows[0][HUMAN_VALIDATION_COLUMN] == "true"
+    assert rows[0][MANUAL_REVIEWED_COLUMN] == "false"
+
+
+def test_sanitize_manual_rows_keeps_extended_human_validation_labels() -> None:
+    rows = sanitize_manual_rows(
+        [
+            {
+                "firm": "DuplicateCo",
+                "real_move_to_country": "GBR",
+                HUMAN_VALIDATION_COLUMN: "duplicate",
+            },
+            {
+                "firm": "BorsenCo",
+                "real_move_to_country": "GBR",
+                HUMAN_VALIDATION_COLUMN: "founded w b\u00f8rsen",
+            },
+        ]
+    )
+
+    assert rows[0][HUMAN_VALIDATION_COLUMN] == "duplicate"
+    assert rows[1][HUMAN_VALIDATION_COLUMN] == "founded w B\u00f8rsen"
+    assert "duplicate" in HUMAN_VALIDATION_OPTIONS
+    assert "founded w B\u00f8rsen" in HUMAN_VALIDATION_OPTIONS
