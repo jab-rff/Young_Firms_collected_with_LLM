@@ -1,0 +1,173 @@
+# True Case Stage Cross Table
+
+- Firms covered: 257
+
+## Stage Numbering
+- `df1_816000_articles_scraped` = 1
+- `df2_60000_move_schema_1` = 2
+- `df3_10000_move_schema_2` = 3
+- `df4_8700_move_schema_3` = 4
+- `df5_6000_w_move_score_dk_moves` = 5
+- `df6_1200_data_triangulation` = 6
+- `df7_close_reading` = 7
+
+## Stage Columns
+- `df1_816000_articles_scraped`: df1_816000_articles_scraped.parquet
+- `df2_60000_move_schema_1`: df2_60000_move_schema_1.parquet
+- `df3_10000_move_schema_2`: df3_10000_move_schema_2.parquet
+- `df4_8700_move_schema_3`: df4_8700_move_schema_3.parquet
+- `df5_6000_w_move_score_dk_moves`: df5_6000_w_move_score_dk_moves.parquet
+- `df6_1200_data_triangulation`: df6_1200_data_triangulation.parquet
+- `df7_close_reading`: df7_close_reading.csv
+
+## Firms With Zero Counts In All Old Article Stages
+- Fantastic Services (1st Online Solutions / FantasticServices.com)
+- The Wise Wolf and Friends Company, Inc.
+- Access People (Access People Executive Search & Recruitment)
+- Accession Therapeutics Limited
+- Acrivon Therapeutics, Inc.
+- AKNVAS
+- Anine Bing (Anine Bing Corp)
+- Arrow (Arrow Checkout)
+- Arsenale Bioyards
+- Asset4 (ASSET4 AG)
+- Audos
+- Avidex Ltd
+- Balule River Lodge
+- BitBalloon
+- Bodega Frontio (Frontío)
+- Bodegas Trenza SL
+- BorrowMyDoggy
+- Bundleboon
+- BY NORDIC HANDS
+- Café Hagen / Hagen Coffee Roasters
+- CarryQuote AG
+- Design Collection Denmark
+- CONTESSA BERLIN
+- Copenhagen Pastry
+- Encord
+- Crypto Valley Exchange (CVEX)
+- Danica Crewing Specialists
+- Danish Bakery (aka Chris' Bakery)
+- DNA Design Group
+- Ebbe Sand Soccer Academy Shanghai
+- Fantastic Services
+- FarmingAcademy
+- The Fashion (thefashion.com)
+- Fie Isolde
+- FOLIUM FOOD SCIENCE LIMITED (trading as FOLIUM Science)
+- Food and Fun GmbH (later Mobilson GmbH)
+- FORM (formswim)
+- FortKnoxster Ltd.
+- Genuine China Tours (GCT)
+- Gordian Biotechnology
+- GRØN & ANDERSEN
+- The Hagen Project (Hagen Coffee Roasters)
+- The Hansen Family (design label)
+- HAO / Holm Architecture Office
+- HEY (hey.com)
+- Evident (Evident Insights / Evident Insights Ltd)
+- Interprefy AG
+- iprotus GmbH
+- Jellatech, Inc.
+- LendAmend
+- Log10
+- LW (LW Design Group)
+- Lykke Wullf
+- Martin Roll Company (Martin Roll Company Pte. Ltd.)
+- Merrimack Pharmaceuticals
+- MeyersUSA
+- Mojo Estates SL (House of Mojo / Mojo Capitals)
+- MYbarre Fitness
+- Nabr
+- Neurogan, Inc.
+- Norbreeze Group (Norbreeze Group Pte. Ltd.)
+- Nordic Elements
+- Objects (Objects by Camilla Vest)
+- OBT Shipping Group
+- Ogojiii
+- Oh My Goatness
+- OLDER (OLDER Studio)
+- Prosidion Limited
+- Ostium (Ostium Labs)
+- Studio Other Spaces (SOS)
+- pawaTech Group (betPawa / pawaPay)
+- Pearlita Foods, Inc.
+- Pemara Design
+- Perlunica
+- PILA Pharma (Pila Pharma AB)
+- Planet Illogica
+- Playlab (formerly Pocket Playlab)
+- Privilee
+- Quadrucept Bio Ltd
+- Reality Gaming Group (Reality+)
+- Rensair
+- Sanatorium (sanatorium.health)
+- Wagas (Shanghai Wagas Catering Co., Ltd.)
+- Smør (Smør NYC)
+- SMUK London
+- Snaps & Rye
+- SOFI (Sofi Bakery)
+- Søren Henrichsen Design Studio
+- SPACE OBJEKT PTE. LTD. (Space Objekt)
+- Supertrends AG
+- Tacans (Tacans AG / Tacans Labs)
+- USA DENMARK LAW (formerly Thomas Martin Law / Martin Dahlgaard Attorney P.C.)
+- Tidal Therapeutics
+- Toron Studio
+- TrySome Inc
+- turbopuffer
+- UTILITY therapeutics, Ltd.
+- Free21 (Free21.org)
+- Victor Connect Ltd.
+- VUS Genetics (VUS Diagnostics B.V.)
+- Weav Music, Inc.
+- Webpop
+- Where 2 Technologies
+- Yaak Technologies (Yaak AI)
+- Z&B Fitness (Z&B Fitness)
+- Boomzap Entertainment
+- BorrowMyDoggy
+- Brooklyn Jazz Underground
+- CleanVantage
+- Epoque Plus
+- Fastbase
+- FC Vikings
+- FinDox
+- Florent Venture Partners
+- Free21
+- Georgia Institute of Technology Center for Robotics and Intelligent Machines
+- Happioh
+- Henrik Fisker Design
+- Human Diversity Foundation
+- Itembase
+- Kaya Partners
+- Lace Lithography
+- LendAmend
+- Lumina Analytics
+- MarketReader
+- Marleybones
+- Mirvie
+- Nabr
+- New York Choreographic Institute
+- Nordic Drama Queens
+- NYCE Companies
+- OG
+- Orangutan Land Trust
+- Panathēnea
+- Pandanés
+- Pangolia
+- PangoVet
+- pitchXO
+- RingtoneFeeder
+- Robust.AI
+- Roster Athletics
+- Sceye
+- Seier Fine Arts
+- Servage
+- SocialQuant
+- Solartes
+- The Global Disinformation Index
+- Where 2 Technologies
+- Women's Equality Party
+- Zenodo

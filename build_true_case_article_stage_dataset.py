@@ -14,12 +14,15 @@ import argparse
 import csv
 import re
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 import pandas as pd
 import pyarrow.parquet as pq
 
 from src.normalization import normalize_company_name
+from src.true_case_article_search import build_alias_search_index, match_firms_in_text
+from src.true_case_firm_list import get_firm_name, load_firm_rows
 
 DEFAULT_RESULTS = Path("results_llm_prompting.xlsx")
 DEFAULT_SHEET = "close_reading_cases"
@@ -29,31 +32,47 @@ DEFAULT_SUMMARY = Path("analysis/true_case_article_stage_dataset.md")
 X_ROOT = Path(r"X:\Produktivitet\_1_Mapping_successful_firms - 7002\3_step2_data_scraping\borsen_articles")
 BEFORE_STEP_ROOT = X_ROOT / "0_datasets_before_each_step"
 
-STAGE_FILES = {
-    "all_articles_pair": BEFORE_STEP_ROOT / "df1_816000_articles_scraped.parquet",
-    "schema1_pair": BEFORE_STEP_ROOT / "df2_60000_move_schema_1.parquet",
-    "schema2_pair": BEFORE_STEP_ROOT / "df3_10000_move_schema_2.parquet",
-    "schema3_pair": BEFORE_STEP_ROOT / "df4_8700_move_schema_3.parquet",
-    "final_6000_pair": BEFORE_STEP_ROOT / "df5_6000_w_move_score_dk_moves.parquet",
-    "triangulation_1200_pair": BEFORE_STEP_ROOT / "df6_1200_data_triangulation.parquet",
-    "close_reading_pair": BEFORE_STEP_ROOT / "df7_close_reading.csv",
-}
+@dataclass(frozen=True)
+class StageSpec:
+    slug: str
+    path: Path
 
-STAGE_ORDER = [
-    "all_articles_pair",
-    "schema1_pair",
-    "schema2_pair",
-    "schema3_pair",
-    "final_6000_pair",
-    "triangulation_1200_pair",
-    "close_reading_pair",
+
+STAGES = [
+    StageSpec("df1_816000_articles_scraped", BEFORE_STEP_ROOT / "df1_816000_articles_scraped.parquet"),
+    StageSpec("df2_60000_move_schema_1", BEFORE_STEP_ROOT / "df2_60000_move_schema_1.parquet"),
+    StageSpec("df3_10000_move_schema_2", BEFORE_STEP_ROOT / "df3_10000_move_schema_2.parquet"),
+    StageSpec("df4_8700_move_schema_3", BEFORE_STEP_ROOT / "df4_8700_move_schema_3.parquet"),
+    StageSpec("df5_6000_w_move_score_dk_moves", BEFORE_STEP_ROOT / "df5_6000_w_move_score_dk_moves.parquet"),
+    StageSpec("df6_1200_data_triangulation", BEFORE_STEP_ROOT / "df6_1200_data_triangulation.parquet"),
+    StageSpec("df7_close_reading", BEFORE_STEP_ROOT / "df7_close_reading.csv"),
 ]
+STAGE_ORDER = [stage.slug for stage in STAGES]
+STAGE_NUMBER = {stage: index for index, stage in enumerate(STAGE_ORDER, start=1)}
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build row-level article-stage dataset for manual-true firms.")
     parser.add_argument("--input", type=Path, default=DEFAULT_RESULTS)
     parser.add_argument("--sheet", default=DEFAULT_SHEET)
+    parser.add_argument(
+        "--require-human-validation-true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When set, keep only rows with human_validation=True.",
+    )
+    parser.add_argument(
+        "--filter-founding-origin",
+        default="",
+        help="Optional exact founding_origin filter, case-insensitive after stripping.",
+    )
+    parser.add_argument(
+        "--exclude-method",
+        default="",
+        help="Optional exact method exclusion, case-insensitive after stripping.",
+    )
+    parser.add_argument("--filter-validation-label", default="", help="Optional exact validation_label filter.")
+    parser.add_argument("--filter-origin-track", default="", help="Optional exact origin_track filter.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY)
     return parser.parse_args()
@@ -61,18 +80,27 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    results_df = pd.read_excel(args.input, sheet_name=args.sheet)
-    true_df = results_df[results_df["human_validation"].astype(str) == "True"].copy()
-    firm_specs = [build_firm_spec(row) for row in true_df.to_dict(orient="records")]
+    firm_rows = load_firm_rows(
+        input_path=args.input,
+        sheet=args.sheet,
+        require_human_validation_true=args.require_human_validation_true,
+        filter_founding_origin=args.filter_founding_origin,
+        exclude_method=args.exclude_method,
+        include_column_filters={
+            "validation_label": args.filter_validation_label,
+            "origin_track": args.filter_origin_track,
+        },
+    )
+    firm_specs = [build_firm_spec(row) for row in firm_rows]
 
-    pair_indexes = {
-        "schema1_pair": load_pair_index(STAGE_FILES["schema1_pair"], "schema1_pair"),
-        "schema2_pair": load_pair_index(STAGE_FILES["schema2_pair"], "schema2_pair"),
-        "schema3_pair": load_pair_index(STAGE_FILES["schema3_pair"], "schema3_pair"),
-        "final_6000_pair": load_pair_index(STAGE_FILES["final_6000_pair"], "final_6000_pair"),
-        "triangulation_1200_pair": load_pair_index(STAGE_FILES["triangulation_1200_pair"], "triangulation_1200_pair"),
-        "close_reading_pair": load_pair_index(STAGE_FILES["close_reading_pair"], "close_reading_pair"),
-    }
+    pair_indexes: dict[str, dict[tuple[str, str], dict[str, str]]] = {}
+    for stage in STAGES:
+        if stage.slug == "df1_816000_articles_scraped" or not stage.path.exists():
+            continue
+        try:
+            pair_indexes[stage.slug] = load_pair_index(stage.path, stage.slug)
+        except Exception:
+            continue
 
     rows = build_article_rows(firm_specs=firm_specs, pair_indexes=pair_indexes)
 
@@ -86,7 +114,7 @@ def main() -> None:
 
 
 def build_firm_spec(row: dict[str, Any]) -> dict[str, Any]:
-    firm = str(row.get("firm") or "").strip()
+    firm = get_firm_name(row)
     aliases = extract_aliases(firm)
     for extra_name in (row.get("name_first"), row.get("name_today")):
         extra_text = str(extra_name or "").strip()
@@ -150,7 +178,7 @@ def build_text_patterns(aliases: Iterable[str]) -> list[re.Pattern[str]]:
 
 def load_pair_index(path: Path, stage: str) -> dict[tuple[str, str], dict[str, str]]:
     if path.suffix.lower() == ".csv":
-        df = pd.read_csv(path)
+        df = read_csv_with_fallback(path)
     else:
         df = pd.read_parquet(path)
     link_column = choose_link_column(df.columns)
@@ -186,19 +214,21 @@ def build_article_rows(
     pair_indexes: dict[str, dict[tuple[str, str], dict[str, str]]],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    parquet = pq.ParquetFile(STAGE_FILES["all_articles_pair"])
+    search_index = build_alias_search_index(firm_specs)
+    spec_by_firm = {spec["firm"]: spec for spec in firm_specs}
+    parquet = pq.ParquetFile(STAGES[0].path)
     for batch in parquet.iter_batches(columns=["date", "title", "link", "text_into_model"]):
         frame = batch.to_pandas()
         texts = frame[["title", "text_into_model"]].fillna("").astype(str).agg(" ".join, axis=1)
-        for spec in firm_specs:
-            matched_mask = texts.map(lambda text: any(pattern.search(text) for pattern in spec["patterns"]))
-            if not matched_mask.any():
+        for row_index, text in texts.items():
+            matched_firms = match_firms_in_text(text, search_index)
+            if not matched_firms:
                 continue
-            matched_frame = frame.loc[matched_mask].copy()
-            for _, article_row in matched_frame.iterrows():
+            article_row = frame.loc[row_index]
+            for firm in matched_firms:
                 rows.append(
                     make_output_row(
-                        spec=spec,
+                        spec=spec_by_firm[firm],
                         article_row=article_row,
                         pair_indexes=pair_indexes,
                     )
@@ -216,7 +246,7 @@ def make_output_row(
     matched_variants: list[str] = []
 
     stage_flags = {stage: False for stage in STAGE_ORDER}
-    stage_flags["all_articles_pair"] = True
+    stage_flags["df1_816000_articles_scraped"] = True
 
     for stage_name, index in pair_indexes.items():
         matched = False
@@ -229,10 +259,11 @@ def make_output_row(
                 break
         stage_flags[stage_name] = matched
 
-    deepest_stage = "all_articles_pair"
+    deepest_stage = "df1_816000_articles_scraped"
     for stage in STAGE_ORDER:
         if stage_flags[stage]:
             deepest_stage = stage
+    deepest_stage_nr = STAGE_NUMBER[deepest_stage]
 
     return {
         "firm_name_from_list": spec["firm"],
@@ -242,14 +273,15 @@ def make_output_row(
         "link": link,
         "text_into_model": stringify(article_row.get("text_into_model")),
         "matched_firm_variant_in_pipeline": " | ".join(dict.fromkeys(value for value in matched_variants if value)),
-        "all_articles_pair": bool_text(stage_flags["all_articles_pair"]),
-        "schema1_pair": bool_text(stage_flags["schema1_pair"]),
-        "schema2_pair": bool_text(stage_flags["schema2_pair"]),
-        "schema3_pair": bool_text(stage_flags["schema3_pair"]),
-        "final_6000_pair": bool_text(stage_flags["final_6000_pair"]),
-        "triangulation_1200_pair": bool_text(stage_flags["triangulation_1200_pair"]),
-        "close_reading_pair": bool_text(stage_flags["close_reading_pair"]),
+        "df1_816000_articles_scraped": bool_text(stage_flags["df1_816000_articles_scraped"]),
+        "df2_60000_move_schema_1": bool_text(stage_flags["df2_60000_move_schema_1"]),
+        "df3_10000_move_schema_2": bool_text(stage_flags["df3_10000_move_schema_2"]),
+        "df4_8700_move_schema_3": bool_text(stage_flags["df4_8700_move_schema_3"]),
+        "df5_6000_w_move_score_dk_moves": bool_text(stage_flags["df5_6000_w_move_score_dk_moves"]),
+        "df6_1200_data_triangulation": bool_text(stage_flags["df6_1200_data_triangulation"]),
+        "df7_close_reading": bool_text(stage_flags["df7_close_reading"]),
         "deepest_stage": deepest_stage,
+        "deepest_stage_nr": str(deepest_stage_nr),
     }
 
 
@@ -293,6 +325,15 @@ def bool_text(value: bool) -> str:
     return "true" if value else "false"
 
 
+def read_csv_with_fallback(path: Path) -> pd.DataFrame:
+    for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+        try:
+            return pd.read_csv(path, encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(path)
+
+
 def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
@@ -308,8 +349,13 @@ def write_summary(rows: list[dict[str, Any]], path: Path) -> None:
         "",
         f"- Rows: {len(rows)}",
         "",
-        "## Deepest Stage Counts",
+        "## Stage Numbering",
     ]
+    lines.extend(f"- `{stage}` = {STAGE_NUMBER[stage]}" for stage in STAGE_ORDER)
+    lines.extend([
+        "",
+        "## Deepest Stage Counts",
+    ])
     lines.extend(f"- `{stage}`: {count}" for stage, count in deepest_counts.items())
     with path.open("w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
