@@ -9,3 +9,11 @@ data/runs/
 *.parquet
 *.jsonl
 *.csv
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz
+docs/latex/build/

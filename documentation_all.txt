@@ -1,0 +1,509 @@
+DOCUMENTATION_ALL
+
+Introduction
+
+This document summarizes the three methods used in this project to identify two related types of firms:
+
+1. firms founded in Denmark that later moved their own executive headquarters or main operations abroad
+2. firms founded abroad by Danish founders
+
+The project currently uses three separate entry methods:
+
+1. Borsen article pipeline
+2. LLM prompting pipeline
+3. Diffbot-based pipeline
+
+Method 1 is article-led and starts from a large corpus of Danish business newspaper articles. Methods 2 and 3 are source-led candidate discovery methods. They differ in how candidate firms are found, but they share the same core logic of structured evidence collection, stricter reconciliation, conservative validation, and final human review. Because of that, methods 2 and 3 are documented together in one common chapter below.
+
+
+CHAPTER 1. BORSEN ARTICLE PIPELINE
+
+This chapter is based on the existing Borsen pipeline documentation already present in the project.
+
+Purpose
+
+The purpose of the Borsen pipeline is to identify possible headquarters relocations of Danish firms from a large corpus of Danish business newspaper articles. The core problem is that HQ relocations are often not described explicitly. Articles frequently contain only indirect clues, partial information, or ambiguous language. The pipeline is therefore designed to keep recall high in the early stages and only become more restrictive later.
+
+Overall logic
+
+The Borsen method is a multi-stage reduction pipeline:
+
+1. collect a very large article corpus
+2. extract structured firm-level information from article text
+3. filter for relocation-relevant cases
+4. classify likely HQ relocation cases
+5. triangulate article-based evidence with outside sources
+6. manually validate the remaining cases
+
+Process overview
+
+The existing Borsen documentation describes the process as follows:
+
+- A large-scale article corpus is collected from Borsen.dk.
+- Firm-level signals are extracted from article text with structured LLM extraction.
+- Several filtering rounds reduce the sample while trying to preserve plausible relocation cases.
+- A text-classification model then scores whether a firm-article pair plausibly describes a headquarters or main-operations relocation from Denmark to another country.
+- External sources are used to triangulate the likely current HQ location of the firm.
+- Remaining cases are manually reviewed through close reading and source cross-checking.
+
+Article collection
+
+The existing documentation states that the article collection started from Borsen.dk and relied on a broad search-based scraping strategy because the full archive could not be browsed directly. A broad set of 311 keyword queries was constructed, covering years, countries, regions, industries, and business-related terms. By iterating across queries, sort orders, and result pages, the process collected approximately 816,399 unique articles.
+
+The documentation notes an important limitation: total archive coverage cannot be observed directly. To assess completeness, collected article counts were compared with counts shown by the website search interface for selected firms, and the numbers were described as very similar.
+
+Information extraction
+
+After collection, the article corpus was filtered toward relocation-relevant content. Simpler approaches such as title classification or direct relocation mention detection were not sufficient, because true HQ relocations are rarely stated in explicit form.
+
+Instead, the process extracted all firms mentioned in each article and used structured extraction to derive firm-level information from full article text. The existing documentation describes this extraction as being performed with NuExtract. The main advantage is that it converts unstructured text into a consistent schema that can then be filtered systematically.
+
+The documentation describes three extraction schemas:
+
+Schema 1:
+- identify all firms mentioned
+- detect signals such as Danish origin, Danish presence, internationalization, investment, and merger/acquisition context
+
+Schema 2:
+- detect whether the firm has moved, will move, or might move across countries
+- extract possible move-from and move-to country signals
+
+Schema 3:
+- distinguish relocation of the firm as a whole from movement of people, departments, production, or simple market expansion
+
+Filtering logic
+
+The Borsen pipeline then applied increasingly strict filters:
+
+- First, it retained cases where Danish origin or Danish presence co-occurred with signals that the firm was no longer based in Denmark or had clear internationalization signals.
+- Second, it focused more directly on country-movement signals.
+- Third, it filtered out cases where only individuals, departments, or production moved rather than the firm itself.
+- Finally, it restricted the sample to relocations from Denmark or cases where the origin or destination country remained unclear, while excluding domestic Danish moves and foreign-to-foreign moves.
+
+The counts described in the existing documentation are approximately:
+
+- around 60,000 candidate firms after the first broad extraction filter
+- around 10,000 after stronger movement filtering
+- around 8,700 after distinguishing HQ-relevant moves from other international activity
+- around 6,000 after restricting to Denmark-origin movement cases
+
+Text classification
+
+After the extraction-based reduction, the pipeline shifted from extraction to classification. The existing documentation states that GPT-4o was used to score whether a given firm-article pair plausibly described a relocation of headquarters or main operations from Denmark to another country.
+
+The classification prompt defined:
+
+- what counts as relocation
+- that the firm must be Danish for the relocation track
+- that indirect or implied evidence counts
+- that foreign office openings alone should not count
+- that merger and acquisition context should be scored separately
+
+The model returned structured fields such as:
+
+- move_score
+- move_context
+- DK_score
+- MA_score
+- MA_context
+
+The documentation states that firm-article pairs with move_score above 0.7 were retained. This reduced the sample to 1,279 firms across about 2,100 articles.
+
+Data triangulation
+
+Once the article information was largely exhausted, the Borsen pipeline moved to external triangulation. According to the existing documentation, three sources were combined:
+
+1. destination country signals extracted from the article
+2. GPT-based inference of the firm's current HQ location
+3. Diffbot as a separate structured web source
+
+The documentation describes two GPT HQ checks:
+
+- one without web search
+- one with web search
+
+Diffbot was used as an independent external source of structured company information. Firms were then grouped into likely positives, likely negatives, and unclear cases based on agreement or disagreement across article extraction, GPT inference, and Diffbot.
+
+The Borsen documentation also notes that mergers and acquisitions often looked like relocations in automated stages. To reduce this problem, M&A events detected in articles were matched against the Orbis M&A database. The purpose was not to automatically remove all acquired firms, but to distinguish independent relocations from acquisition-linked relocation narratives and support later close reading.
+
+Close reading
+
+The final step in the Borsen method was manual close reading. This involved reviewing:
+
+- the original article
+- the extracted and classified outputs
+- additional web sources
+- LinkedIn
+- the Danish business register
+- ORBIS and related sources
+
+The documentation states that the final close reading classified cases into three groups:
+
+1. firms founded in Denmark that later relocated headquarters abroad
+2. entrepreneurs who relocated abroad and then founded the firm there
+3. false positives
+
+The documentation also describes two conservative coding rules:
+
+- if Danes founded the firm but the initial location could not be determined, the case was coded as founded abroad
+- if the current HQ location could not be determined confidently, the case was removed from the final target sample
+
+Summary of method 1
+
+The Borsen method is best understood as a high-recall article-mining pipeline followed by structured filtering, classification, triangulation, and manual validation. Its strength is that it can recover relocation signals that appear in narrative reporting even when those signals are implicit. Its main challenge is that business articles are noisy and often blur the distinction between true HQ relocation, foreign expansion, acquisition, founder migration, and legal entity changes.
+
+
+CHAPTER 2. LLM PROMPTING AND DIFFBOT PIPELINES
+
+Why methods 2 and 3 are documented together
+
+The LLM prompting method and the Diffbot method use different candidate sources, but they serve the same research purpose and converge into the same downstream validation logic. The main difference is where the candidate list comes from:
+
+- Method 2 starts from LLM-driven discovery on the web
+- Method 3 starts from a third-party Diffbot CSV that already contains candidate firms and founder/location hints
+
+After candidate generation, both methods move toward the same objectives:
+
+- preserve provenance
+- structure evidence
+- distinguish the two origin tracks
+- apply stricter cross-source reconciliation
+- apply a conservative final validation gate
+- export a human-review file
+
+Research framing used in both methods
+
+The project uses two origin tracks:
+
+1. in_denmark
+   Firms founded in Denmark that may later have moved their own executive HQ, main office, or main operations abroad.
+
+2. abroad_danish_founders
+   Firms founded abroad by Danish founders.
+
+These two tracks must not be confused. The project logic is explicit on this point:
+
+- Danish founder abroad is not the same as founded in Denmark
+- a foreign office alone is not enough
+- acquisition-only is not enough
+- legal redomiciling is not automatically executive HQ relocation
+
+Common output philosophy
+
+Both methods are designed around transparent staged outputs:
+
+- intermediate data are saved to JSONL or CSV
+- source URLs are preserved
+- prompt versions are stored
+- raw source-derived records are retained inside later records
+- final output is a human-review CSV, not an automated final truth claim
+
+
+SECTION 2.1. METHOD 2: LLM PROMPTING PIPELINE
+
+Purpose
+
+The LLM prompting pipeline is used to discover additional firms beyond the validated seed list. It is recall-first at the start and then becomes stricter across later stages.
+
+Entry point
+
+This method begins with the validated seed list in `preliminary_data_28_04.csv` or the current seed file used in the run. The seed list serves two purposes:
+
+- the known-firm exclusion list
+- the set of core examples that shape discovery prompts
+
+Stage 1. Snowball discovery
+
+The script `snowball_discovery.py` runs OpenAI web search over bounded discovery buckets. The current implementation uses bucket types such as:
+
+- sector
+- destination country
+- city pair
+- selected cross-buckets combining sector and destination
+
+The discovery stage is recall-first and deliberately looks for obscure or long-tail firms. It excludes already known firms and aims to keep only firms founded in 1999 or later, or at least strongly supported as post-1998 young firms when the year is not explicit.
+
+For each discovered lead, the structured output includes fields such as:
+
+- firm_name
+- origin_track
+- discovery_bucket
+- possible_founding_location
+- possible_founding_year
+- possible_abroad_location
+- possible_move_year
+- signal_type
+- signal_strength
+- short_reason
+- source_urls
+
+The discovery stage can also run follow-up rounds per bucket to ask for additional not-yet-found firms, and it stores discovery memory across runs so the prompt exclusions improve over time.
+
+Stage 2. Deduplication against known firms
+
+The script `deduplicate_snowball_candidates.py` removes firms already present in the seed list and merges duplicate discoveries by normalized company name.
+
+When duplicate records are merged, the script preserves:
+
+- all unique source URLs
+- all discovery buckets where the firm appeared
+- a merged record count
+- merged evidence text where relevant
+
+This stage is important because the same firm may be surfaced through multiple sectors, destinations, or alias forms.
+
+Stage 3. Model 1 candidate extraction
+
+The script `model_1_candidate_extraction.py` takes the deduplicated discovery leads and converts them into a structured candidate format. This is still a recall-oriented stage.
+
+For each lead, Model 1 asks track-specific questions:
+
+- `in_denmark`: could this plausibly be a Danish-founded firm that later moved its own HQ, main office, or main operations abroad?
+- `abroad_danish_founders`: could this plausibly be a firm founded abroad by Danish founders?
+
+Model 1 keeps uncertain but plausible candidates, but it excludes firms clearly founded before 1999. The output is one row per focal firm candidate and includes structured fields such as:
+
+- founded_in_denmark
+- danish_founders_abroad
+- founding_year
+- founding_city
+- founding_country_iso
+- moved_hq_abroad
+- move_year
+- moved_to_city
+- moved_to_country_iso
+- M&A fields
+- source-backed evidence snippets
+- reasoning
+- confidence note
+
+Stage 4. Model 2 enrichment and reconciliation
+
+The script `model_2_enrichment.py` is the first truly stricter validation stage. It uses web search and attempts to reconcile the best structured interpretation of the candidate using cross-source evidence.
+
+Model 2 verifies or fills fields such as:
+
+- first legal entity name
+- CVR when available
+- founding date and founding year
+- founding city and country
+- whether the firm was founded in Denmark
+- whether the founders appear Danish
+- whether the firm moved HQ abroad
+- move date, move year, and destination
+- current HQ
+- current status
+- M&A context
+
+This stage is conservative and source-grounded. It explicitly avoids fabricating:
+
+- dates
+- legal names
+- cities
+- countries
+- CVR numbers
+
+It also preserves grouped source lists by evidence type:
+
+- sources_founding
+- sources_founder_identity
+- sources_relocation
+- sources_ma
+- sources_status_today
+
+Stage 5. Model 3 strict validation
+
+The script `model_3_validation.py` applies the final conservative research gate. This is where the pipeline decides whether a candidate should be labeled:
+
+- true
+- false
+- unclear
+
+The logic is stricter than Model 2. Important rules include:
+
+- `false` if founding year is before 1999
+- `unclear` if founding year is unknown and there is no strong 1999-or-later evidence
+- `true` only if the track-specific definition is actually met
+
+For `in_denmark`, true requires evidence that the firm itself was founded, based, or incorporated in Denmark and later moved its own executive HQ, main office, or main operations abroad.
+
+For `abroad_danish_founders`, true requires evidence that the firm was founded abroad and that at least one founder appears Danish from source-backed evidence.
+
+Model 3 also writes:
+
+- validation_label
+- validation_reason
+- exclusion_reason
+- evidence_summary
+- needs_human_review
+
+It updates cumulative master files and track-specific master files as part of the run.
+
+Stage 6. Export for human review
+
+The script `export_final_review.py` converts validated JSONL into a review CSV. The review file preserves the main fields needed for manual checking, including:
+
+- firm name
+- origin track
+- validation label
+- founding and relocation fields
+- HQ today fields
+- confidence
+- evidence summaries
+- grouped source URLs
+
+This CSV is the handoff point for human close reading.
+
+Current command order for method 2
+
+The current documented command order in the repository is:
+
+1. `python snowball_discovery.py --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001.jsonl --round 1 --model gpt-5-mini --max-buckets 5`
+2. `python deduplicate_snowball_candidates.py --input data/discovery/snowball_round_001.jsonl --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001_deduped.jsonl`
+3. `python model_1_candidate_extraction.py --input data/discovery/snowball_round_001_deduped.jsonl --output data/model1/snowball_round_001_candidates.jsonl --model gpt-5-mini`
+4. `python model_2_enrichment.py --input data/model1/snowball_round_001_candidates.jsonl --output data/model2/snowball_round_001_enriched.jsonl --model gpt-5-mini`
+5. `python model_3_validation.py --input data/model2/snowball_round_001_enriched.jsonl --output data/model3/snowball_round_001_validated.jsonl --model gpt-5-mini`
+6. `python export_final_review.py --input data/model3/snowball_round_001_validated.jsonl --output data/review/snowball_round_001_review.csv`
+
+
+SECTION 2.2. METHOD 3: DIFFBOT PIPELINE
+
+Purpose
+
+The Diffbot pipeline is used when the project already has an externally generated firm list and wants to run it through the same structured validation framework. In the current codebase, this is mainly used for the `abroad_danish_founders` track.
+
+Entry point
+
+This method starts from a CSV produced outside the core staged pipeline. In the current repository, the key input is:
+
+- `diffbot_dk_founder_after_1999.csv`
+
+The helper module `src/diffbot_founder_pipeline.py` converts each CSV row into a candidate record. Diffbot fields are treated as hints, not as confirmed facts.
+
+The candidate builder preserves information such as:
+
+- firm name
+- homepage
+- LinkedIn URL
+- founder names
+- current location hints
+- summary text
+- original Diffbot fields in `source_record`
+- a compact `seed_summary`
+
+The code explicitly warns that these are only third-party hints and that the model must verify:
+
+- founders
+- founding location
+- founding year
+- current HQ
+
+How method 3 differs from method 2
+
+Method 3 does not perform snowball discovery and does not need Model 1 in the current implementation. That is because the Diffbot CSV already functions as a prebuilt candidate seed list. So the pipeline starts at a later point.
+
+In practical terms:
+
+- method 2 discovers leads first, deduplicates them, and then converts them into structured candidates
+- method 3 begins with an already assembled candidate list and directly enters the stricter reconciliation stage
+
+Shared downstream stages
+
+After preparation, method 3 uses the same core scripts as method 2:
+
+- `model_2_enrichment.py`
+- `model_3_validation.py`
+- `export_final_review.py`
+
+This is why the two methods are mostly the same after entry.
+
+Stage 1. Prepare Diffbot candidates
+
+The script `prepare_diffbot_founder_after_1999.py` or the end-to-end wrapper `run_diffbot_founder_pipeline.py` reads the CSV and creates candidate JSONL records in `data/diffbot/`.
+
+These candidate records are already shaped to match the downstream model expectations. They are marked with:
+
+- `origin_track = "abroad_danish_founders"`
+- uncertain founding and relocation fields by default
+- seed provenance from Diffbot
+
+Stage 2. Model 2 enrichment
+
+The Diffbot candidates are then passed through the same `model_2_enrichment.py` logic described above. This is where raw Diffbot hints become actual source-checked structured evidence.
+
+Stage 3. Model 3 validation
+
+The enriched Diffbot records are then passed through the same `model_3_validation.py` logic. This produces the final conservative labels:
+
+- true
+- false
+- unclear
+
+For the Diffbot workflow, the current wrappers write isolated cumulative outputs under `data/diffbot/` rather than directly mixing them into the general cumulative files.
+
+Stage 4. Export for human review
+
+Finally, the validated Diffbot records are exported to a CSV review file, again using the same output structure as the other method.
+
+Current command options for method 3
+
+The codebase currently supports either the end-to-end wrapper or the staged commands.
+
+End-to-end:
+
+- `python run_diffbot_founder_pipeline.py --input diffbot_dk_founder_after_1999.csv --slug diffbot_dk_founder_after_1999 --model2 gpt-5-mini --model3 gpt-5-mini`
+
+Stepwise:
+
+1. `python prepare_diffbot_founder_after_1999.py --input diffbot_dk_founder_after_1999.csv --output data/diffbot/diffbot_dk_founder_after_1999_candidates.jsonl`
+2. `python run_diffbot_founder_model_2.py --input data/diffbot/diffbot_dk_founder_after_1999_candidates.jsonl --output data/diffbot/diffbot_dk_founder_after_1999_enriched.jsonl --model gpt-5-mini`
+3. `python run_diffbot_founder_model_3.py --input data/diffbot/diffbot_dk_founder_after_1999_enriched.jsonl --output data/diffbot/diffbot_dk_founder_after_1999_validated.jsonl --model gpt-5-mini`
+
+The end-to-end wrapper also exports:
+
+- candidate JSONL
+- enriched JSONL
+- validated JSONL
+- review CSV
+- separate master validated JSONL
+- separate master review CSV
+
+
+SECTION 2.3. MERGED INTERPRETATION OF METHODS 2 AND 3
+
+Shared structure
+
+If methods 2 and 3 are described at a high level rather than by exact script entry point, they share the same overall structure:
+
+1. obtain a candidate firm list from an external source
+2. preserve raw source provenance
+3. convert the candidate into a structured company-level record
+4. reconcile the record with web-based evidence
+5. apply a strict final validation rule set
+6. export a review file for manual close reading
+
+Main difference
+
+The only major difference is candidate origin:
+
+- LLM prompting creates the candidate list itself through recall-first web discovery
+- Diffbot supplies a candidate list from a third-party structured data source
+
+Why both methods are useful
+
+The LLM prompting method is useful for recall expansion, especially for obscure firms that are not already present in a database-driven list. The Diffbot method is useful when a precompiled founder-oriented list already exists and the task is to validate, clean, and classify it under the project's research definitions.
+
+In both cases, the project deliberately avoids treating the first source as truth. The source is only the entry point. Truth claims are deferred to stricter reconciliation, conservative validation, and final human review.
+
+
+Final note
+
+Across all three methods, the project relies on the same core research discipline:
+
+- high recall early
+- stricter filtering later
+- preserved provenance at every stage
+- clear separation between founded in Denmark and founded abroad by Danish founders
+- final human close reading before research use
+
+This is essential because headquarters relocation, founder migration, acquisition, foreign expansion, and legal restructuring are often conflated in raw source material. The pipeline is therefore designed not simply to find firms, but to preserve enough structured evidence to distinguish these cases carefully.

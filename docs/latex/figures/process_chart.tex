@@ -1,0 +1,69 @@
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.9cm and 1.4cm,
+    >=Latex,
+    box/.style={
+        rectangle,
+        rounded corners,
+        draw=black,
+        align=center,
+        minimum width=3.9cm,
+        minimum height=0.95cm,
+        font=\small
+    },
+    shared/.style={
+        rectangle,
+        rounded corners,
+        draw=black,
+        fill=gray!10,
+        align=center,
+        minimum width=5.1cm,
+        minimum height=1.0cm,
+        font=\small
+    },
+    title/.style={
+        font=\bfseries\small
+    }
+]
+
+\node[title] (t1) at (0,0) {Method 1: Borsen articles};
+\node[title] (t2) at (5.2,0) {Method 2: LLM prompting};
+\node[title] (t3) at (10.4,0) {Method 3: Diffbot};
+
+\node[box, below=of t1] (m1a) {Collect and screen\\business articles};
+\node[box, below=of m1a] (m1b) {Extract firms and\\relocation signals};
+\node[box, below=of m1b] (m1c) {Assess likely cases using\\article evidence and outside sources};
+
+\node[box, below=of t2] (m2a) {Start from known firms and\\search for additional cases};
+\node[box, below=of m2a] (m2b) {Combine duplicates and keep\\plausible candidate firms};
+\node[box, below=of m2b] (m2c) {Check and enrich the evidence\\across web sources};
+
+\node[box, below=of t3] (m3a) {Use an external list of firms\\from Diffbot};
+\node[box, below=of m3a] (m3b) {Turn list entries into\\candidate cases};
+\node[box, below=of m3b] (m3c) {Check and enrich the evidence\\across web sources};
+
+\node[shared, below=2.0cm of m2c] (s1) {Apply the common research definition\\and remove weak or unclear cases};
+\node[shared, below=of s1] (s2) {Human close reading\\and final assessment};
+\node[shared, below=of s2] (s3) {Final set of firms for review:\\(i) founded in Denmark and later moved headquarters abroad\\(ii) founded abroad by Danish founders};
+
+\draw[->] (m1a) -- (m1b);
+\draw[->] (m1b) -- (m1c);
+
+\draw[->] (m2a) -- (m2b);
+\draw[->] (m2b) -- (m2c);
+
+\draw[->] (m3a) -- (m3b);
+\draw[->] (m3b) -- (m3c);
+
+\draw[->] (m1c.south) |- (s1.west);
+\draw[->] (m2c.south) -- (s1.north);
+\draw[->] (m3c.south) |- (s1.east);
+
+\draw[->] (s1) -- (s2);
+\draw[->] (s2) -- (s3);
+
+\end{tikzpicture}
+\caption{Combined process diagram for the three identification methods. The methods begin from different sources but converge into the same validation and human-review process.}
+\label{fig:combined_process_diagram}
+\end{figure}
