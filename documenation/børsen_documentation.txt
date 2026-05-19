@@ -1,0 +1,197 @@
+This document describes the process of identifying HQ relocation of Danish firm from a corpus of Danish business newspaper articles. 
+
+
+
+
+
+1.1	Process Overview
+We develop a multi-stage identification process centered on exploiting information contained in newspaper articles and enriching it with additional data from external sources to systematically identify headquarters (HQ) relocations from Denmark to foreign countries. The central challenge is that HQ relocations are rarely stated explicitly, requiring the extraction of implicit signals from unstructured text while maintaining high recall of true relocation cases. To address this challenge, we iteratively reduce the article corpus while retaining potentially relevant cases. We combine text extraction, text classification, and web-based data enrichment using large language models (LLMs) to identify candidate observations in a scalable and structured manner.
+We first collect and process a large-scale dataset of newspaper articles (Section 1.1.1). We then extract information about firms and indications of relocation from the article text (Section 1.1.2) and use this to filter for firms with indications of HQ relocation abroad. We next compute a relocation likelihood score for each firm–article pair, as articles can mention multiple firms and firms can appear in multiple articles and retain cases above a classification threshold (Section 1.1.3). We then enrich these observations with external data and triangulate HQ information across multiple sources to infer the firm’s latest HQ location (Section 1.1.4).
+Despite extracting and structuring information from the articles and collecting additional information from external sources, ambiguity and potential inaccuracies remain, and automated methods alone do not suffice for final classification. We therefore complement the pipeline with a manual validation step based on close reading and cross-referencing with firm registers, databases, and additional sources, including information on mergers and acquisitions. Based on this assessment, we make a final classification decision (Section 1.1.5). This step ensures that identified cases correspond to genuine HQ relocations and distinguishes them from related but conceptually different events, such as purely legal HQ registrations, stock-exchange listings through foreign entities, or misreported HQ locations.
+ 
+
+1.1.1	Article Collection
+First, we collected as many newspaper articles from Børsen.dk as possible. To do so, we built a web scraper that automatically retrieved the article title, excerpt, full text, and publication date. A key limitation is that the website’s structure does not allow one to browse through the full article archive, thereby hindering systematic scraping. 
+To address this limitation, we relied on the website’s search functionality and constructed a broad set of 311 keyword queries, including years, countries, regions, industries, and business-related terms. By iterating across these keywords, sorting options, and result pages, we were able to retrieve a large number of articles per query. Using this approach, we collected approximately 816,399 unique newspaper articles.
+We note that the exact coverage of the Børsen.dk archive cannot be fully verified, as the total number of articles published on the website is not directly observable. To assess completeness, we compared the number of articles in our dataset to the number reported by the website’s search interface when searching for a set of firm names. The numbers are very similar across firms, indicating that our dataset captures almost all articles published on Børsen.dk.
+1.1.2	Information Extraction
+Next, we filtered the corpus toward newspaper articles containing information relevant to firm relocations. We tested several approaches to reduce the number of articles, including classifying articles based on their titles and using extraction models to identify explicit mentions of relocation. However, these approaches proved insufficient, as relocation events are rarely described explicitly.
+Instead, we extracted all firms mentioned in each article and used a structured extraction model to derive information about each firm based from the full article text. For this task, we used NuExtract, a large language model (LLM) specialized in extracting structured information from unstructured documents and designed to produce reliable outputs. Compared to rule-based approaches (e.g., regular expressions) and general-purpose LLMs, this method captures both explicit and implicit information in the text and produces consistent outputs in a predefined schema. This process converts unstructured text into structured, firm-level data in tabular form, enabling us to apply systematic filtering rules.
+In an initial extraction step, the model was prompted to identify firm characteristics such as whether the firm is portrayed as Danish (in the past, present, or at founding), whether it is associated with international activities, and whether the article mentions mergers and acquisitions (M&A) (see Appendix X, Extraction Schema 1).
+Based on this extracted information, we applied filtering rules to retain firm-article pairs with signals of a potential relocation from Denmark to another country. In the first iteration, we retained cases where the article indicated Danish origin or Danish presence together with signs that the firm was no longer based in Denmark, such as being portrayed as non-Danish in the future or mentioning internationalization. Applying these filters results in approximately 60,000 candidate firms.
+In the second iteration, we focused more directly on cross-country movement by retaining only observations for which the model identified a relocation-related movement signal (see Appendix X, Extraction Schema 2), reducing the sample to roughly 10,000 firms. 
+In the third iteration, we refined the sample by distinguishing HQ-relevant relocations from other forms of international activity. We excluded cases referring to the relocation of individuals, departments, or production rather than relocation of the firm’s HQ or main operations (see Appendix X, Extraction Schema 3), resulting in a further reduction to around 8,700 firms.
+Finally, we restricted the dataset to relocations from Denmark or cases where the origin or destination country could not be identified, excluding relocations within Denmark or between foreign countries. This results in approximately 6,000 candidate firms. Overall, applying the three extraction schemas and filtering rules reduces the dataset from over 60,000 firms to this final set.
+1.1.3.	Text Classification
+After reducing the number of articles in the dataset to less than 2% of the original corpus, we shifted from information extraction to classifying whether an article describes a firm relocating its HQ or main operations. For this task, we used the GPT-4o model to assess the likelihood that a given firm–article pair signaling a HQ relocation from Denmark to another country.
+We provided the model with a structured prompt defining relocation, including explicit inclusion and exclusion criteria, and asked it to assign a relocation likelihood score between 0 and 1, together with a brief explanation. The prompt also instructed the model to account for indirect or implicit evidence of relocation, as such events are rarely stated explicitly in newspaper articles. In addition, we asked the model to provide the same type of assessment for whether the firm is Danish and whether the relocation occurs in the context of a merger or acquisition (see Appendix X, Text Classification Prompt).
+We retained firm–article pairs with a relocation score above 0.7, focusing on cases with a high likelihood of representing true headquarters relocations. This filtering step reduced the dataset to 1,279 firms (2,100 articles).
+
+
+1.1.4.	Data Triangulation
+After reducing the dataset to a substantially smaller number of likely positive cases using the two methods described above, we considered the information contained in the articles largely exhausted and decided to enrich the dataset with information from additional sources. For this final automated filtering step, we collected information from multiple sources and triangulated the data. 
+As an initial indicator of a firm’s current headquarters location, we used the destination country extracted from the newspaper article using the extraction model. Next, we prompted the GPT-4o model to identify the country of the firm’s current headquarters location based only on the firm’s name and a short description, without providing the newspaper article. We ran the model twice, once without web search and once with web search enabled. 
+In addition, we retrieved the same information from Diffbot, a knowledge-graph database that continuously crawls the web and structures the collected information into a searchable database. Diffbot aggregates information across a large number of web sources and is designed to identify the information most consistently reported when sources provide conflicting information, such as, e.g., for firms’ headquarters locations. This provided an independent source of structured web-based information separate from the newspaper articles and the HQ locations inferred by the GPT model. 
+Finally, we classified firms into three groups based on the country in which the firm’s HQ was located according to the newspaper article, the GPT model, and Diffbot: likely positive relocation cases, likely negative cases, and unclear cases.
+During this process, and especially in the text-classification step (Section 1.1.3), we found that mergers and acquisitions were often interpreted as relocation events. To distinguish between cases where firms independently relocated their HQs and cases where firms effectively obtained a new HQ location after being acquired and integrated into another firm, we matched M&A events identified in the newspaper articles to events recorded in the Orbis M&A database. We did not exclude acquired firms from the sample, as HQ relocations occurring in connection with acquisitions may still be relevant. For example, acquisitions by private equity funds may involve only limited changes to the firm’s operations and HQ functions. However, distinguishing between acquired and non-acquired firms helped guide the subsequent close-reading step.
+
+	Not M&A matched	M&A matched	Total
+Likely true	193	73	266
+Unclear	110	131	241
+Likely false	598	0	598
+Total	901	204	1105
+
+1.1.5.	Close Reading
+The final step in the identification process was a manual close reading to verify each candidate case. This involved reviewing the newspaper article together with the additional information generated in the previous steps, as well as conducting manual searches on the web, LinkedIn, the Danish business register, and other online databases such as ORBIS. To support this process, we also used LLMs in a question-answering format to gather contextual information on the firm’s founding history, the relocation process, and the location of its current headquarters. For this task, we used Perplexity’s Sonar model and OpenAI’s GPT-5, and we instructed both models to search the web for additional relevant information.
+We sought to verify every relocation identified through the automated pipeline using at least one source other than the original newspaper article. The close reading allowed us to classify cases into three categories: (1) firms founded in Denmark that later relocated their HQ abroad; (2) entrepreneurs who relocated abroad and then founded the firm there; and (3) false positives that were removed because they did not involve either type of relocation. 
+In many instances, business news articles use wording that does not allow these categories to be distinguished without further investigation. For example, an article may describe a foreign firm as “Danish-founded” or as having “Danish roots.” This could mean either that the firm was founded in Denmark and later moved abroad, or that it was founded abroad by Danish entrepreneurs. Another common formulation is that a firm has “established itself” or “expanded” in a foreign country. This may refer either to a genuine HQ relocation or simply to an existing firm increasing its presence in a foreign market while remaining headquartered in Denmark.
+In some cases, the sources identified through manual coding did not agree with one another, or they conflicted with the original article. In those cases, we collected additional sources in an attempt to reach a reliable conclusion. When the available evidence still did not allow us to classify the case with confidence, we applied two conservative coding rules.
+First, if a firm was established by Danes but its initial location could not be determined, we coded it as founded abroad. This category includes born-global firms with early headquarters functions split between Denmark and at least one other country, as well as very small firms with an incomplete or unrecorded headquarters history. XX firms were recoded according to this rule.
+Second, if we could not determine with confidence whether the firm was headquartered in Denmark or abroad at the time of coding, we removed it from the sample. This includes firms with multiple claimed headquarters, such as SteelSeries, which has been described as headquartered in both Chicago and Copenhagen. YY firms were removed according to this rule.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Text Extractions Prompts (NuExtract)
+Schema 1	"All Firms mentioned ": [
+            "Name": "string",
+            "Founders Danes": "boolean",
+            "Internationalizes": "boolean",
+            "Investment": "boolean",
+            "Merger or Acquisition": "boolean",
+            "Portrayed Non-DK future": "boolean",
+            "Portrayed DK article time": "boolean",
+            "Portrayed DK when established": "boolean",
+            "Based in DK": "boolean"
+        ]
+Schema 2	"All Firms mentioned": [
+            "Name": "string",
+            "moves country": [
+                "has moved",
+                "will move",
+                "might move",
+                "stock exchange"
+            ],
+            "Country ISO Firm moving to": "string",
+            "Country ISO Firm moving from": "string"
+        ]
+Schema 3	"All Firms mentioned": [
+            "Name": "string",
+            " Which part of the company moves abroad ": [
+                " Relocate as a whole ",
+                " Move department
+                " Move production ",
+                " Sell products in a new market"
+            ],
+            " Who moves abroad": [
+                " Person ",
+                " Firm”,
+                "Person and Firm"
+            ]
+        ]
+
+
+
+Text Classification Prompt (GPT 4o)
+Explain System Prompt User Prompt
+System Prompt	You are tasked with a classification task: Based only on the provided article text, judge whether the named firm is relocating, has relocated, will relocate its headquarters or main operations from Denmark to another country.
+
+Definitions:
+    Relocation (True Positive):
+    - The firm moves, has moved (past), or will move (future) its main office, headquarters, or main operations from Denmark to another country.
+    - The firm must be Danish (based or incorporated in Denmark).
+    - Indirect or implied references (e.g., foreign HQs, "now based in...", etc.) count as positive evidence of moving, even if not stated directly.
+
+    Exclusions:
+    - Do NOT count if the firm only opens a new subsidiary, branch, or office abroad while keeping HQ/main operations in Denmark.
+
+    Implicit/Indirect Evidence:
+    - Most articles will not say "moved" directly; rely on hints, implications, or references to activities/base abroad.
+
+    M&A (Merger & Acquisition) Assessment:
+    - MA_score = confidence that BOTH: (a) the firm relocated (as above), AND (b) is merged or acquired in the article context.
+    - If no M&A, set MA_score = 0, MA_context = null.
+
+    Outputs:
+    Return a valid JSON object with exactly these five keys:
+
+    - move_score: Number [0,1] — confidence the firm possibly relocated (past/present/future, explicit or implied). Use nonzero for weak/ambiguous hints.
+    - move_context: Short summary in ENGLISH of the relocation event, keep it simple and short. Use null if move_score is 0.
+    - DK_score: Number [0,1] — confidence the firm is Danish.
+    - MA_score: Number [0,1] — confidence the firm both relocated AND is merged/acquired.
+    - MA_context: Short summary in ENGLISH for M&A, else null if MA_score is 0.
+
+    Instructions:
+    - All scores must be numbers.
+    - Use null (not "None") for move_context if move_score is 0; null for MA_context if MA_score is 0.
+    - Return only the JSON object.
+
+
+User Prompt	Only assess the firm below.
+        Firm: {firm}
+        Is this Firm: {firm} relocating its base from Denmark to another country?
+        Read context instructions.
+
+        Hints from an upstream extraction model (may be noisy):
+        move_from_hint: {move_from}
+        move_to_hint: {move_to}
+        nespaper article text:
+        {article_text}
+
+        Return only the JSON object.
+
+ 
+Headquarter Location Prompt (GPT 4o)
+Explain System Prompt User Prompt
+System Prompt	You are an expert in global business facts.
+Task:
+Return the headquarters (HQ) city and the ISO 3166-1 alpha-2 country code of the firm's headquarters TODAY.
+
+Rules:
+- Use only well-known public facts (no guessing).
+- HQ means the primary corporate/operational headquarters today.
+- If the firm was renamed or rebranded, use the current successor entity's HQ.
+- If HQ is unclear/disputed/unknown, return null(s) and explain briefly.
+- Do NOT invent city or country.
+
+Return strictly valid JSON:
+{
+  "hq_city_today": "string or null",
+  "hq_iso_today": "string or null",
+  "hq_confidence": 0.0-1.0,
+  "hq_context": "one-sentence factual note"
+}
+
+User Prompt 1	GPT-only (no web search). Uses structured JSON output via chat.completions.
+
+Output columns:
+      - hq_city_gpt_simple
+      - hq_iso_gpt_simple
+      - hq_confidence_gpt_simple
+      - hq_context_gpt_simple
+
+User Prompt 2	GPT + web_search via responses API.
+
+Output columns:
+      - hq_city_gpt_web
+      - hq_iso_gpt_web
+      - hq_confidence_gpt_web
+      - hq_context_gpt_web
+
+ 

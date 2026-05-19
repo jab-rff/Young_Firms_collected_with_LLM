@@ -24,6 +24,7 @@ from src.openai_costs import cost_log_path, sum_cost_records
 
 DEFAULT_MODEL = "gpt-5-mini"
 TOTAL_STAGES = 6
+CODE_DIR = Path(__file__).resolve().parent
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,7 @@ def build_stage_specs(
             output_path=paths.dedup,
             command=[
                 sys.executable,
-                "deduplicate_snowball_candidates.py",
+                str(_script_path("deduplicate_snowball_candidates.py")),
                 "--input",
                 str(paths.discovery),
                 "--known",
@@ -139,7 +140,7 @@ def build_stage_specs(
             output_path=paths.review,
             command=[
                 sys.executable,
-                "export_final_review.py",
+                str(_script_path("export_final_review.py")),
                 "--input",
                 str(paths.model3),
                 "--output",
@@ -388,7 +389,7 @@ def _build_discovery_command(
 ) -> list[str]:
     command = [
         sys.executable,
-        "snowball_discovery.py",
+        str(_script_path("snowball_discovery.py")),
         "--known",
         str(known_path),
         "--output",
@@ -420,7 +421,7 @@ def _build_model_command(
 ) -> list[str]:
     command = [
         sys.executable,
-        script_name,
+        str(_script_path(script_name)),
         "--input",
         str(input_path),
         "--output",
@@ -433,6 +434,10 @@ def _build_model_command(
     if batch:
         command.append("--batch")
     return command
+
+
+def _script_path(script_name: str) -> Path:
+    return CODE_DIR / script_name
 
 
 def _print_dry_run(stage: StageSpec) -> None:

@@ -21,27 +21,27 @@ The process now starts from a validated seed list and uses LLM-driven snowball d
    Review CSV output with evidence snippets, URLs, and validation labels preserved.
 
 ## Key Files
-- `src/seed_list.py`
-- `snowball_discovery.py`
-- `deduplicate_snowball_candidates.py`
-- `model_1_candidate_extraction.py`
-- `model_2_enrichment.py`
-- `model_3_validation.py`
-- `export_final_review.py`
+- `code/src/seed_list.py`
+- `code/snowball_discovery.py`
+- `code/deduplicate_snowball_candidates.py`
+- `code/model_1_candidate_extraction.py`
+- `code/model_2_enrichment.py`
+- `code/model_3_validation.py`
+- `code/export_final_review.py`
 
 ## Command Order
 ```bash
-python snowball_discovery.py --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001.jsonl --round 1 --model gpt-5-mini --max-buckets 5
+python code/snowball_discovery.py --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001.jsonl --round 1 --model gpt-5-mini --max-buckets 5
 
-python deduplicate_snowball_candidates.py --input data/discovery/snowball_round_001.jsonl --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001_deduped.jsonl
+python code/deduplicate_snowball_candidates.py --input data/discovery/snowball_round_001.jsonl --known preliminary_data_28_04.csv --output data/discovery/snowball_round_001_deduped.jsonl
 
-python model_1_candidate_extraction.py --input data/discovery/snowball_round_001_deduped.jsonl --output data/model1/snowball_round_001_candidates.jsonl --model gpt-5-mini
+python code/model_1_candidate_extraction.py --input data/discovery/snowball_round_001_deduped.jsonl --output data/model1/snowball_round_001_candidates.jsonl --model gpt-5-mini
 
-python model_2_enrichment.py --input data/model1/snowball_round_001_candidates.jsonl --output data/model2/snowball_round_001_enriched.jsonl --model gpt-5-mini
+python code/model_2_enrichment.py --input data/model1/snowball_round_001_candidates.jsonl --output data/model2/snowball_round_001_enriched.jsonl --model gpt-5-mini
 
-python model_3_validation.py --input data/model2/snowball_round_001_enriched.jsonl --output data/model3/snowball_round_001_validated.jsonl --model gpt-5-mini
+python code/model_3_validation.py --input data/model2/snowball_round_001_enriched.jsonl --output data/model3/snowball_round_001_validated.jsonl --model gpt-5-mini
 
-python export_final_review.py --input data/model3/snowball_round_001_validated.jsonl --output data/review/snowball_round_001_review.csv
+python code/export_final_review.py --input data/model3/snowball_round_001_validated.jsonl --output data/review/snowball_round_001_review.csv
 ```
 
 ## Development

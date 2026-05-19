@@ -1,0 +1,163 @@
+\section{BORSEN ARTICLE PIPELINE}
+
+This chapter is based on the existing Borsen pipeline documentation already present in the project.
+
+\subsection{Purpose}
+
+The purpose of the Borsen pipeline is to identify possible headquarters relocations of Danish firms from a large corpus of Danish business newspaper articles. The core problem is that HQ relocations are often not described explicitly. Articles frequently contain only indirect clues, partial information, or ambiguous language. The pipeline is therefore designed to keep recall high in the early stages and only become more restrictive later.
+
+\subsection{Overall logic}
+
+The Borsen method is a multi-stage reduction pipeline:
+
+\begin{enumerate}
+\item collect a very large article corpus
+\item extract structured firm-level information from article text
+\item filter for relocation-relevant cases
+\item classify likely HQ relocation cases
+\item triangulate article-based evidence with outside sources
+\item manually validate the remaining cases
+\end{enumerate}
+
+\subsection{Process overview}
+
+The existing Borsen documentation describes the process as follows:
+
+\begin{itemize}
+\item A large-scale article corpus is collected from Borsen.dk.
+\item Firm-level signals are extracted from article text with structured LLM extraction.
+\item Several filtering rounds reduce the sample while trying to preserve plausible relocation cases.
+\item A text-classification model then scores whether a firm-article pair plausibly describes a headquarters or main-operations relocation from Denmark to another country.
+\item External sources are used to triangulate the likely current HQ location of the firm.
+\item Remaining cases are manually reviewed through close reading and source cross-checking.
+\end{itemize}
+
+\subsection{Article collection}
+
+The existing documentation states that the article collection started from Borsen.dk and relied on a broad search-based scraping strategy because the full archive could not be browsed directly. A broad set of 311 keyword queries was constructed, covering years, countries, regions, industries, and business-related terms. By iterating across queries, sort orders, and result pages, the process collected approximately 816,399 unique articles.
+
+The documentation notes an important limitation: total archive coverage cannot be observed directly. To assess completeness, collected article counts were compared with counts shown by the website search interface for selected firms, and the numbers were described as very similar.
+
+\subsection{Information extraction}
+
+After collection, the article corpus was filtered toward relocation-relevant content. Simpler approaches such as title classification or direct relocation mention detection were not sufficient, because true HQ relocations are rarely stated in explicit form.
+
+Instead, the process extracted all firms mentioned in each article and used structured extraction to derive firm-level information from full article text. The existing documentation describes this extraction as being performed with NuExtract. The main advantage is that it converts unstructured text into a consistent schema that can then be filtered systematically.
+
+The documentation describes three extraction schemas:
+
+Schema 1:
+\begin{itemize}
+\item identify all firms mentioned
+\item detect signals such as Danish origin, Danish presence, internationalization, investment, and merger/acquisition context
+\end{itemize}
+
+Schema 2:
+\begin{itemize}
+\item detect whether the firm has moved, will move, or might move across countries
+\item extract possible move-from and move-to country signals
+\end{itemize}
+
+Schema 3:
+\begin{itemize}
+\item distinguish relocation of the firm as a whole from movement of people, departments, production, or simple market expansion
+\end{itemize}
+
+\subsection{Filtering logic}
+
+The Borsen pipeline then applied increasingly strict filters:
+
+\begin{itemize}
+\item First, it retained cases where Danish origin or Danish presence co-occurred with signals that the firm was no longer based in Denmark or had clear internationalization signals.
+\item Second, it focused more directly on country-movement signals.
+\item Third, it filtered out cases where only individuals, departments, or production moved rather than the firm itself.
+\item Finally, it restricted the sample to relocations from Denmark or cases where the origin or destination country remained unclear, while excluding domestic Danish moves and foreign-to-foreign moves.
+\end{itemize}
+
+The counts described in the existing documentation are approximately:
+
+\begin{itemize}
+\item around 60,000 candidate firms after the first broad extraction filter
+\item around 10,000 after stronger movement filtering
+\item around 8,700 after distinguishing HQ-relevant moves from other international activity
+\item around 6,000 after restricting to Denmark-origin movement cases
+\end{itemize}
+
+\subsection{Text classification}
+
+After the extraction-based reduction, the pipeline shifted from extraction to classification. The existing documentation states that GPT-4o was used to score whether a given firm-article pair plausibly described a relocation of headquarters or main operations from Denmark to another country.
+
+The classification prompt defined:
+
+\begin{itemize}
+\item what counts as relocation
+\item that the firm must be Danish for the relocation track
+\item that indirect or implied evidence counts
+\item that foreign office openings alone should not count
+\item that merger and acquisition context should be scored separately
+\end{itemize}
+
+The model returned structured fields such as:
+
+\begin{itemize}
+\item move_score
+\item move_context
+\item DK_score
+\item MA_score
+\item MA_context
+\end{itemize}
+
+The documentation states that firm-article pairs with move_score above 0.7 were retained. This reduced the sample to 1,279 firms across about 2,100 articles.
+
+\subsection{Data triangulation}
+
+Once the article information was largely exhausted, the Borsen pipeline moved to external triangulation. According to the existing documentation, three sources were combined:
+
+\begin{enumerate}
+\item destination country signals extracted from the article
+\item GPT-based inference of the firm's current HQ location
+\item Diffbot as a separate structured web source
+\end{enumerate}
+
+The documentation describes two GPT HQ checks:
+
+\begin{itemize}
+\item one without web search
+\item one with web search
+\end{itemize}
+
+Diffbot was used as an independent external source of structured company information. Firms were then grouped into likely positives, likely negatives, and unclear cases based on agreement or disagreement across article extraction, GPT inference, and Diffbot.
+
+The Borsen documentation also notes that mergers and acquisitions often looked like relocations in automated stages. To reduce this problem, M\&A events detected in articles were matched against the Orbis M\&A database. The purpose was not to automatically remove all acquired firms, but to distinguish independent relocations from acquisition-linked relocation narratives and support later close reading.
+
+\subsection{Close reading}
+
+The final step in the Borsen method was manual close reading. This involved reviewing:
+
+\begin{itemize}
+\item the original article
+\item the extracted and classified outputs
+\item additional web sources
+\item LinkedIn
+\item the Danish business register
+\item ORBIS and related sources
+\end{itemize}
+
+The documentation states that the final close reading classified cases into three groups:
+
+\begin{enumerate}
+\item firms founded in Denmark that later relocated headquarters abroad
+\item entrepreneurs who relocated abroad and then founded the firm there
+\item false positives
+\end{enumerate}
+
+The documentation also describes two conservative coding rules:
+
+\begin{itemize}
+\item if Danes founded the firm but the initial location could not be determined, the case was coded as founded abroad
+\item if the current HQ location could not be determined confidently, the case was removed from the final target sample
+\end{itemize}
+
+\subsection{Summary of method 1}
+
+The Borsen method is best understood as a high-recall article-mining pipeline followed by structured filtering, classification, triangulation, and manual validation. Its strength is that it can recover relocation signals that appear in narrative reporting even when those signals are implicit. Its main challenge is that business articles are noisy and often blur the distinction between true HQ relocation, foreign expansion, acquisition, founder migration, and legal entity changes.
