@@ -132,7 +132,6 @@ Possible tracks:
 Rules:
 - discovery is for cheap lead generation, not final validation
 - prioritize the requested origin track, but if a source-backed lead clearly belongs to the other track, you may still return it with the correct origin_track label
-- prioritize obscure or long-tail firms over famous repeated examples
 - exclude every known firm provided by the user
 - return only firms founded in 1999 or later
 - do not return firms clearly founded before 1999
