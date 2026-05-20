@@ -1,7 +1,6 @@
 Find additional Danish-founded firms that may plausibly show a later foreign HQ, principal-office, parent, leadership, or operations signal.
 
 Exclude all known firms listed below.
-Prioritize obscure or less-known firms.
 Return only short, source-backed leads founded in 1999 or later.
 
 Do not return firms already in the known seed list.

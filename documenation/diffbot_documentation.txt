@@ -1,0 +1,31 @@
+\section{Diffbot Pipeline}
+
+\subsection{Overview}
+
+The Diffbot pipeline serves the same substantive purpose as the LLM prompting pipeline, but it begins from a different source. Rather than identifying firms through broad prompting and web search, it starts from an externally assembled list of candidate firms. This makes it a useful complementary route when a third-party source already provides a plausible set of firms that may be relevant to the research question.
+
+The key difference is therefore the point of entry, not the standard of evaluation. Diffbot provides a candidate list, but the candidates still need to be assessed under the same conceptual logic that governs the LLM prompting pipeline.
+
+\begin{figure}[htbp]
+\centering
+\fbox{
+\parbox{0.88\linewidth}{
+\centering
+External candidate source $\rightarrow$ candidate preparation $\rightarrow$ evidence-based assessment $\rightarrow$ final review
+}
+}
+\caption{Overview of the Diffbot pipeline.}
+\label{fig:diffbot_overview}
+\end{figure}
+
+\subsection{The source}
+
+The Diffbot source is useful because it can surface candidate firms efficiently, especially in cases where founder identity and international location are already part of the available company description. At the same time, such a source should not be treated as definitive evidence. Structured external data can be valuable for discovery, but it may also contain simplifications, omissions, or descriptions that reflect later company profiles rather than original founding conditions. For that reason, the source is best understood as a starting point for further evaluation rather than as a final classification device.
+
+\subsection{Assessment of candidates}
+
+After the initial candidate list has been prepared, the Diffbot pipeline relies on the same later-stage logic as the LLM prompting pipeline. The more interpretive reconciliation stage is therefore the same as the one described in Section~\ref{sec:llm_model2}, and the final conservative validation stage is the same as the one described in Section~\ref{sec:llm_model3}. This ensures that the source of candidate firms may differ, but the substantive standard used to evaluate them does not.
+
+\subsection{Final review}
+
+Like the LLM prompting pipeline, the Diffbot pipeline ends with a set of firms prepared for human close reading. Its value lies in providing an alternative route for generating candidate firms, while still feeding into the same final review process and the same research definition.

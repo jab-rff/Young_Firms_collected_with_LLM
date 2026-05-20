@@ -1,0 +1,114 @@
+Appendix-style sample initial discovery user prompt
+Source sample: data/discovery/snowball_round_005_bucket_runs.jsonl
+
+Notes for appendix use:
+- This is a sample of the user prompt used in the first web-search stage.
+- The purpose of this stage is broad discovery, not final validation.
+- Values prefixed with `*` depend on the selected search bucket.
+- The current version of the script defines 49 buckets in total:
+- `sector` buckets: 10
+- `destination` buckets: 15
+- `city_pair` buckets: 9
+- `cross_bucket` buckets: 15
+- `mechanism` buckets: 0 in the current version
+- `source_style` buckets: 0 in the current version
+- Sector buckets cover: `biotech`, `SaaS/software`, `fintech`, `gaming`, `medtech`, `logistics`, `cleantech`, `retail/consumer`, `hospitality`, and `design`.
+- Destination buckets cover: `US`, `UK`, `Germany`, `Sweden`, `Switzerland`, `Netherlands`, `Ireland`, `Portugal`, `Italy`, `Spain`, `Singapore`, `Canada`, `China`, `UAE`, and `South Africa`.
+- City-pair buckets cover: `Copenhagen to abroad`, `Aarhus to abroad`, `Denmark to London`, `Denmark to New York City`, `Denmark to Boston`, `Denmark to San Francisco`, `Denmark to Los Angeles`, `Denmark to Paris`, and `Denmark to Berlin`.
+- Cross buckets combine a sector with a destination. In the current version there are 15 such combinations.
+- In this sample, the chosen bucket is `*sector:biotech`.
+
+{
+  "origin_track": "in_denmark",
+  "task": "Find additional Danish-founded firms that may plausibly show a later foreign HQ, principal-office, parent, leadership, or operations signal.\n\nExclude all known firms listed below.\nPrioritize obscure or less-known firms.\nReturn only short, source-backed leads founded in 1999 or later.\n\nDo not return firms already in the known seed list.\nDo not return famous repeated examples if they are already known.\nDo not return firms clearly founded before 1999.\nIf founding year is unknown, keep only firms whose source-backed evidence strongly suggests a young firm or startup founded in 1999 or later.\nSearch beyond the literal phrase \"moved headquarters\" and look for principal executive offices, global headquarters, group headquarters, executive-leadership base, IPO or listing re-domiciliation, parent-company restructuring, strategically important foreign offices, and operating-company continuation after M&A.\nPay attention to former names, legal entity names, rebrands, parent/subsidiary variants, and slash-separated aliases.\nPrefer Danish business media, foreign reporting, investor filings, archived company pages, and registry-style sources.\nDo not return pure acquisition-only cases unless there is plausible evidence the Danish-origin firm continued as an operating company abroad.\nDo not return ordinary foreign office openings alone.\nDo not return Danish-founder-abroad cases unless the firm itself was founded, based, or incorporated in Denmark.\nDanish founder abroad is not the same as founded in Denmark.\nReturn source-backed plausible leads, not confirmed relocations.\nKeep the explanation short and do not write long evidence paragraphs.\nReturn only 1-3 source URLs.\nDo not decide final validation.",
+  "bucket": {
+    "bucket_type": "*sector",
+    "bucket_value": "*biotech",
+    "discovery_bucket": "*sector:biotech"
+  },
+  "bucket_guidance": {
+    "instruction": "For cross_bucket prompts, satisfy all parts of the combined bucket together rather than treating them as separate alternatives."
+  },
+  "research_target": {
+    "target_case": "firms founded in Denmark that may later have moved their own HQ or main operations abroad",
+    "non_target_case": "abroad (Danish founders) without the firm itself being founded or based in Denmark",
+    "founding_year_rule": "founding_year >= 1999; unknown founding year is allowed only with strong evidence of a 1999-or-later startup or young firm",
+    "relocation_mechanisms_to_search": [
+      "principal executive offices moved abroad",
+      "global or group headquarters moved abroad",
+      "IPO or listing-related re-domiciliation with executive relocation",
+      "creation of a foreign parent or holding company after Danish founding",
+      "acquisition-linked relocation where the operating company still exists abroad",
+      "founder or executive relocation narrative tied to the firm's HQ",
+      "strategically important foreign office or operations base that may have become the main office"
+    ],
+    "name_handling": [
+      "look for former names",
+      "look for rebrands",
+      "look for legal entity names",
+      "look for slash-separated or formerly-style aliases"
+    ],
+    "core_known_cases_already_covered": "*This field contains a short list of well-known examples that are already covered in the study. It helps steer the model away from repeatedly suggesting the same cases."
+  },
+  "requirements": {
+    "prioritize": [
+      "obscure firms",
+      "long-tail firms",
+      "cheap, source-backed leads",
+      "cases outside the usual famous examples",
+      "Danish-language and foreign-language reporting when relevant",
+      "city-pair and destination-specific relocation narratives"
+    ],
+    "avoid": [
+      "any known firm in the exclusion list",
+      "pure acquisition-only cases without continued operating-company evidence abroad",
+      "ordinary foreign office openings alone",
+      "Danish-founder-abroad cases unless the company itself was founded or based in Denmark",
+      "firms clearly founded before 1999"
+    ],
+    "prefer_sources": [
+      "Danish business media",
+      "foreign business media",
+      "investor filings",
+      "company about pages",
+      "archived company pages",
+      "registry-style sources"
+    ],
+    "return_only_candidates_with_real_sources": true,
+    "lead_threshold": "at least one real source for Danish origin and at least one real source for a later plausible foreign signal"
+  },
+  "signal_definitions": {
+    "allowed_signal_type_values": [
+      "explicit_hq_move",
+      "foreign_principal_office",
+      "foreign_parent_or_redomiciliation",
+      "acquisition_linked_continuation",
+      "foreign_office_or_operations",
+      "leadership_abroad",
+      "other_plausible_signal"
+    ],
+    "allowed_signal_strength_values": [
+      "strong",
+      "medium",
+      "weak"
+    ],
+    "strong": "explicit HQ/headquarters/principal executive office/global HQ abroad",
+    "medium": "foreign parent, re-domiciliation, IPO/listing migration, or main office abroad without fully proven physical HQ move",
+    "weak": "acquisition, foreign office, leadership abroad, or operational expansion abroad only; plausible lead but not enough for final validation"
+  },
+  "output_fields": [
+    "firm_name",
+    "origin_track",
+    "discovery_bucket",
+    "sector_if_known",
+    "possible_founding_location",
+    "possible_founding_year",
+    "possible_abroad_location",
+    "possible_move_year",
+    "signal_type",
+    "signal_strength",
+    "short_reason",
+    "source_urls"
+  ],
+  "known_firm_exclusions": "*This field contains firms that should not be returned. It includes firms already identified in the seed data and firms already found in earlier rounds, so that the search keeps expanding to new candidates."
+}

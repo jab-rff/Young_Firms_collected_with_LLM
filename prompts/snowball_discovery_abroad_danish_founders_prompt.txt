@@ -1,4 +1,4 @@
-Find additional firms founded abroad by Danish founders. Exclude all known firms listed below. Prioritize obscure or less-known firms. Return only short, source-backed leads founded in 1999 or later.
+Find additional firms founded abroad by Danish founders. Exclude all known firms listed below. Return only short, source-backed leads founded in 1999 or later.
 
 Discovery is broad and shallow. Do not prove final validation. The lead needs at least one real source suggesting Danish founder identity or background and at least one real source suggesting the firm was founded, incorporated, or originally operated outside Denmark.
 

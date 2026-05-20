@@ -1,0 +1,125 @@
+\section{Agentic AI-Assisted Web Search}
+\label{llm}
+
+\subsection{Overview}
+\label{llm_process}
+
+Our initial identification strategy relies on the fact that relocation-related events are often mentioned, either directly or indirectly, in business news coverage. To complement the newspaper-based approach, we also searched the web for additional firms related to our two cases of interest: firms founded in Denmark that later relocated their headquarters abroad, and firms founded abroad by Danish founders.
+
+We implemented this as a multi-stage LLM-assisted process that begins with broad web search and then gradually gathers, organizes, and evaluates information about firms. The early stages are intentionally broad and retain many possible candidates. Later stages apply stricter criteria and reduce the set to a smaller group of firms for manual close reading.
+
+The process begins by prompting an LLM to conduct broad web searches for firms that may show signs of a later foreign headquarters or signs of being founded abroad by Danish founders (Section \autoref{llm_prompting}). We instruct the model to exclude firms already identified through the systematic processing of the Børsen articles. In this way, the search snowballs outward from the firms identified in the newspaper material to identify additional potentially relevant cases.
+
+We then organize and consolidate the identified firms at the firm level to construct a set of candidate firms (Section \autoref{llm_identification}). Next, we prompt the LLM to collect additional information about firms' founding histories, headquarters locations, founders, acquisition activity, and the reasons why a firm may fit one of the events we study (Section \autoref{llm_additional_info}). Finally, we ask the LLM to evaluate whether the collected evidence supports classifying a firm as either a Danish firm that later relocated its headquarters abroad or a firm founded abroad by Danish founders (Section \autoref{llm_evaluation}). All cases classified as true or likely true positives are subsequently reviewed manually in the final close-reading stage (Section \autoref{close_reading}). We perform all preceding stages automatically using agentic AI workflows built with OpenAI Codex.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}[htbp]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+>=Latex,
+panel/.style={
+    rectangle,
+    rounded corners=2pt,
+    draw=black,
+    line width=0.55pt,
+    fill=white,
+    minimum width=3.9cm,
+    minimum height=6.0cm,
+    inner sep=0pt
+},
+header/.style={
+    rectangle,
+    draw=black,
+    line width=0.55pt,
+    fill=gray!12,
+    minimum width=3.9cm,
+    minimum height=1.35cm,
+    align=center,
+    font=\bfseries\small,
+    inner sep=2pt
+},
+bodytext/.style={
+    anchor=north west,
+    text width=3.35cm,
+    align=left,
+    font=\small
+},
+arrow/.style={
+    ->,
+    line width=0.7pt
+}
+]
+
+\node[panel] (p1) at (0,0) {};
+\node[header, anchor=north] (h1) at (p1.north) {LLM prompting\\with web search\\(\autoref{llm_prompting})};
+\node[bodytext] at ([xshift=0.32cm,yshift=-1.75cm]p1.north west) {
+\textbullet\ Used firms identified in Børsen articles as starting points\\[0.35cm]
+\textbullet\ Searched the web for additional firms and related entities
+};
+
+\node[panel] (p2) at (4.7,0) {};
+\node[header, anchor=north] (h2) at (p2.north) {Identify candidate\\firms\\(\autoref{llm_identification})};
+\node[bodytext] at ([xshift=0.32cm,yshift=-1.75cm]p2.north west) {
+\textbullet\ Organized observations at the firm level\\[0.35cm]
+\textbullet\ Removed duplicates and consolidated repeated firms
+};
+
+\node[panel] (p3) at (9.4,0) {};
+\node[header, anchor=north] (h3) at (p3.north) {Collect additional\\firm information\\(\autoref{llm_additional_info})};
+\node[bodytext] at ([xshift=0.32cm,yshift=-1.75cm]p3.north west) {
+\textbullet\ Collected information from public web sources\\[0.35cm]
+\textbullet\ Gathered information on founders, HQs, and acquisitions
+};
+
+\node[panel] (p4) at (14.1,0) {};
+\node[header, anchor=north] (h4) at (p4.north) {Evaluate candidate\\firms\\(\autoref{llm_evaluation})};
+\node[bodytext] at ([xshift=0.32cm,yshift=-1.75cm]p4.north west) {
+\textbullet\ Evaluated whether firms fit the study definitions\\[0.35cm]
+\textbullet\ Distinguished relocations from related events
+};
+
+\node[panel] (p5) at (18.8,0) {};
+\node[header, anchor=north] (h5) at (p5.north) {Manual\\close reading\\(\autoref{close_reading})};
+\node[bodytext] at ([xshift=0.32cm,yshift=-1.75cm]p5.north west) {
+\textbullet\ Manually reviewed likely candidate firms\\[0.35cm]
+\textbullet\ Validated classifications using additional sources
+};
+
+\draw[arrow] (p1.east) -- (p2.west);
+\draw[arrow] (p2.east) -- (p3.west);
+\draw[arrow] (p3.east) -- (p4.west);
+\draw[arrow] (p4.east) -- (p5.west);
+
+\end{tikzpicture}%
+}
+\caption{LLM prompting pipeline.}
+\label{fig:llm_prompting_pipeline}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{LLM prompting}
+\label{llm_prompting}
+
+The first stage focuses on broad web-search discovery. Starting from firms identified in the Børsen articles, we prompt the LLM to search for additional firms that may plausibly fit one of our two cases of interest: firms founded in Denmark that later relocated their headquarters abroad, or firms founded abroad by Danish founders. The prompts ask the model to perform recall-oriented ``snowball'' searches that expand outward from the original newspaper-based cases. We also instruct the model to search beyond explicit mentions of ``moved headquarters'' and instead look for broader signals such as principal offices, executive leadership locations, group headquarters, re-domiciliations, and foreign parent structures (see Appendix \autoref{llm_initial_prompt}).
+
+At this stage, the purpose is broad discovery rather than final validation. We therefore instruct the LLM to return short, source-backed leads that may plausibly fit one of the events we study, while excluding firms already identified through the newspaper pipeline, firms founded before 1999, and ordinary foreign office openings. The output of this stage is a broad set of potentially relevant firms that are examined more systematically in the later stages of the pipeline.
+
+\subsection{Identify candidate firms}
+\label{llm_identification}
+
+Next, we organized the collected observations at the firm level by removing duplicate firms, consolidating repeated observations, and standardizing firm names and identities. This transformed a broad and sometimes overlapping set of web-search results into a more structured set of candidate firms that could be evaluated more systematically in later stages.
+
+\subsection{Collect additional firm information}
+\label{llm_additional_info}
+
+For each candidate firm, we then collected additional information from public web sources such as company websites, business registries, LinkedIn profiles, founder biographies, press releases, and acquisition announcements. We focused especially on information about where the firm was founded, where its headquarters are located today, who founded the company, and whether the firm had later been acquired or merged into another company.
+
+Because different sources often described the same company differently, this stage focused on combining information across sources and assessing the evidence jointly rather than relying on a single source alone.
+
+\subsection{Evaluate candidate firms}
+\label{llm_evaluation}
+
+The final automated stage evaluated whether the collected information supported classifying the firm as either a Danish firm that later relocated abroad or a firm founded abroad by Danish entrepreneurs. At this stage, we applied stricter evaluation criteria and separated these firms from acquisitions, foreign expansion, legal registration abroad, and other related events that did not correspond to the outcomes we study.
+
+The output of this process was a smaller set of likely candidate firms prepared for the final manual close-reading stage.
